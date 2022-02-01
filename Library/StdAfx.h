@@ -52,8 +52,8 @@
 #include <process.h>
 
 // ADDITIONAL MACRO
-#define IsCtrlKeyDown()     (GetKeyState(VK_CONTROL) < 0)
-#define IsShiftKeyDown()    (GetKeyState(VK_SHIFT) < 0)
-#define IsAltKeyDown()      (GetKeyState(VK_MENU) < 0)
+#define IsCtrlKeyDown() false//     (GetKeyState(VK_CONTROL) < 0)
+#define IsShiftKeyDown() false//    (GetKeyState(VK_SHIFT) < 0)
+#define IsAltKeyDown() false//      (GetKeyState(VK_MENU) < 0)
 
 #endif
