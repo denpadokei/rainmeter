@@ -23,7 +23,7 @@
 
 #define RAINMETER_LANGUAGE L"https://www.rainmeter.net/localization"
 
-WINDOWPLACEMENT DialogManage::c_WindowPlacement = {0};
+WINDOWPLACEMENT DialogManage::c_WindowPlacement = { 0 };
 DialogManage* DialogManage::c_Dialog = nullptr;
 
 DialogManage::DialogManage() : Dialog()
@@ -81,7 +81,7 @@ void DialogManage::Open(int tab)
 		nullptr);
 
 	// Fake WM_NOTIFY to change tab
-	NMHDR nm;
+	NMHDR nm = { 0 };
 	nm.code = TCN_SELCHANGE;
 	nm.idFrom = Id_Tab;
 	nm.hwndFrom = c_Dialog->GetControl(Id_Tab);
@@ -163,6 +163,14 @@ void DialogManage::UpdateSkins(Skin* skin, bool deleted)
 	}
 }
 
+void DialogManage::UpdateSkinDraggableCheckBox()
+{
+	if (c_Dialog && c_Dialog->m_TabSkins.IsInitialized())
+	{
+		c_Dialog->m_TabSkins.UpdateDraggableCheckBox();
+	}
+}
+
 void DialogManage::UpdateLayouts()
 {
 	if (c_Dialog && c_Dialog->m_TabLayouts.IsInitialized())
@@ -184,6 +192,14 @@ void DialogManage::UpdateLanguageStatus()
 	if (c_Dialog && c_Dialog->m_TabSettings.IsInitialized())
 	{
 		c_Dialog->m_TabSettings.UpdateLanguageStatus();
+	}
+}
+
+void DialogManage::UpdateGlobalDraggableCheckBox()
+{
+	if (c_Dialog && c_Dialog->m_TabSettings.IsInitialized())
+	{
+		c_Dialog->m_TabSettings.UpdateDraggableCheckBox();
 	}
 }
 
@@ -284,7 +300,7 @@ INT_PTR DialogManage::OnInitDialog(WPARAM wParam, LPARAM lParam)
 	m_TabGameMode.Create(m_Window);
 	m_TabSettings.Create(m_Window);
 
-	TCITEM tci = {0};
+	TCITEM tci = { 0 };
 	tci.mask = TCIF_TEXT;
 	tci.pszText = GetString(ID_STR_SKINS);
 	TabCtrl_InsertItem(item, 0, &tci);
@@ -295,8 +311,9 @@ INT_PTR DialogManage::OnInitDialog(WPARAM wParam, LPARAM lParam)
 	tci.pszText = GetString(ID_STR_SETTINGS);
 	TabCtrl_InsertItem(item, 3, &tci);
 
-	HICON hIcon = GetIcon(IDI_RAINMETER);
-	SendMessage(m_Window, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+	HICON hIcon = GetIcon(IDI_RAINMETER, true);
+	SendMessage(m_Window, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);  // Titlebar icon: 16x16
+	SendMessage(m_Window, WM_SETICON, ICON_BIG, (LPARAM)hIcon);    // Taskbar icon:  32x32
 
 	item = GetControl(Id_CloseButton);
 	SendMessage(m_Window, WM_NEXTDLGCTL, (WPARAM)item, TRUE);
@@ -539,10 +556,10 @@ void DialogManage::TabSkins::Create(HWND owner)
 		CT_BUTTON(Id_DisplayMonitorButton, ID_STR_DISPLAYMONITOR,
 			359, 165, 119, 14,
 			WS_VISIBLE | WS_TABSTOP | WS_DISABLED, 0),
-		CT_CHECKBOX(Id_DraggableCheckBox, ID_STR_DRAGGABLE,
+		CT_CHECKBOX(Id_ClickThroughCheckBox, ID_STR_CLICKTHROUGH,
 			360, 185, 118, 9,
 			WS_VISIBLE | WS_TABSTOP | WS_DISABLED, 0),
-		CT_CHECKBOX(Id_ClickThroughCheckBox, ID_STR_CLICKTHROUGH,
+		CT_CHECKBOX(Id_DraggableCheckBox, ID_STR_DRAGGABLE,
 			360, 198, 118, 9,
 			WS_VISIBLE | WS_TABSTOP | WS_DISABLED, 0),
 		CT_CHECKBOX(Id_KeepOnScreenCheckBox, ID_STR_KEEPONSCREEN,
@@ -589,7 +606,7 @@ void DialogManage::TabSkins::Create(HWND owner)
 
 void DialogManage::TabSkins::Initialize()
 {
-	BUTTON_SPLITINFO bsi;
+	BUTTON_SPLITINFO bsi = { 0 };
 	bsi.mask = BCSIF_SIZE;
 	bsi.size.cx = 20;
 	bsi.size.cy = 14;
@@ -606,7 +623,7 @@ void DialogManage::TabSkins::Initialize()
 
 	HICON hIcon = (HICON)LoadImage(hDLL, MAKEINTRESOURCE(4), IMAGE_ICON, 16, 16, LR_SHARED);
 	ImageList_AddIcon(hImageList, hIcon);
-	hIcon = (HICON)LoadImage(hDLL, MAKEINTRESOURCE(151), IMAGE_ICON, 16, 16, LR_SHARED); 
+	hIcon = (HICON)LoadImage(hDLL, MAKEINTRESOURCE(151), IMAGE_ICON, 16, 16, LR_SHARED);
 	ImageList_AddIcon(hImageList, hIcon);
 
 	// Apply icons and populate tree
@@ -621,7 +638,7 @@ void DialogManage::TabSkins::Initialize()
 	// Get rid of the EDITTEXT control border
 	item = GetControl(Id_DescriptionLabel);
 	SetWindowLongPtr(item, GWL_EXSTYLE, GetWindowLongPtr(item, GWL_EXSTYLE) &~ WS_EX_CLIENTEDGE);
-	SetWindowPos(item, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER); 
+	SetWindowPos(item, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER);
 
 	item = GetControl(Id_TransparencyDropDownList);
 	ComboBox_AddString(item, L"0%");
@@ -699,7 +716,7 @@ void DialogManage::TabSkins::Update(Skin* skin, bool deleted)
 			// Changed setting from dialog, no need to update
 			m_IgnoreUpdate = false;
 		}
-		else if (m_SkinWindow && m_SkinWindow == skin) 
+		else if (m_SkinWindow && m_SkinWindow == skin)
 		{
 			// Update from currently open skin
 			m_HandleCommands = false;
@@ -726,7 +743,7 @@ void DialogManage::TabSkins::Update(Skin* skin, bool deleted)
 		item = GetControl(Id_SkinsTreeView);
 		TreeView_DeleteAllItems(item);
 
-		TVINSERTSTRUCT tvi = {0};
+		TVINSERTSTRUCT tvi = { 0 };
 		tvi.hInsertAfter = TVI_LAST;
 		tvi.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
 		tvi.item.iImage = tvi.item.iSelectedImage = 0;
@@ -740,7 +757,7 @@ void DialogManage::TabSkins::Update(Skin* skin, bool deleted)
 
 void DialogManage::TabSkins::SetControls()
 {
-	WCHAR buffer[64];
+	WCHAR buffer[64] = { 0 };
 
 	HWND item = GetControl(Id_EditButton);
 	EnableWindow(item, TRUE);
@@ -768,17 +785,7 @@ void DialogManage::TabSkins::SetControls()
 		item = GetControl(Id_DisplayMonitorButton);
 		EnableWindow(item, TRUE);
 
-		item = GetControl(Id_DraggableCheckBox);
-		if (GetRainmeter().GetDisableDragging())
-		{
-			EnableWindow(item, FALSE);
-			Button_SetCheck(item, BST_UNCHECKED);
-		}
-		else
-		{
-			EnableWindow(item, TRUE);
-			Button_SetCheck(item, m_SkinWindow->GetWindowDraggable());
-		}
+		UpdateDraggableCheckBox();
 
 		item = GetControl(Id_ClickThroughCheckBox);
 		EnableWindow(item, TRUE);
@@ -834,6 +841,24 @@ void DialogManage::TabSkins::SetControls()
 	}
 }
 
+void DialogManage::TabSkins::UpdateDraggableCheckBox()
+{
+	if (m_SkinWindow)
+	{
+		HWND item = GetControl(Id_DraggableCheckBox);
+		if (GetRainmeter().GetDisableDragging())
+		{
+			EnableWindow(item, FALSE);
+			Button_SetCheck(item, BST_UNCHECKED);
+		}
+		else
+		{
+			EnableWindow(item, TRUE);
+			Button_SetCheck(item, m_SkinWindow->GetWindowDraggable());
+		}
+	}
+}
+
 void DialogManage::TabSkins::DisableControls(bool clear)
 {
 	HWND item = GetControl(Id_LoadButton);
@@ -845,7 +870,7 @@ void DialogManage::TabSkins::DisableControls(bool clear)
 
 		item = GetControl(Id_EditButton);
 		EnableWindow(item, FALSE);
-		
+
 		item = GetControl(Id_FileLabel);
 		SetWindowText(item, GetString(ID_STR_ELLIPSIS));
 
@@ -994,14 +1019,15 @@ void DialogManage::TabSkins::ReadSkin()
 		}
 
 		// Replace | with newline
-		std::wstring::size_type pos;
+		std::wstring::size_type pos = 0ULL;
 		while ((pos = text.find_first_of(L'|')) != std::wstring::npos)
 		{
-			size_t count = (pos + 1 < text.length() && text[pos + 1] == L' ') ? 2 : 1;
-			if (text[pos - 1] == L' ')
+			size_t next = pos + 1UL;
+			size_t count = (next < text.length() && text[next] == L' ') ? 2ULL : 1ULL;
+			if (text[pos - 1ULL] == L' ')
 			{
 				--pos;
-				count += 1;
+				count += 1ULL;
 			}
 			text.replace(pos, count, L"\r\n");
 		}
@@ -1027,6 +1053,7 @@ void DialogManage::TabSkins::ReadSkin()
 	}
 
 	delete [] buffer;
+	buffer = nullptr;
 }
 
 LRESULT CALLBACK DialogManage::TabSkins::NewSkinButtonSubclass(HWND hwnd, UINT msg, WPARAM wParam,
@@ -1043,7 +1070,7 @@ LRESULT CALLBACK DialogManage::TabSkins::NewSkinButtonSubclass(HWND hwnd, UINT m
 
 			hasEntered = true;
 
-			TRACKMOUSEEVENT tme;
+			TRACKMOUSEEVENT tme = { 0 };
 			tme.cbSize = sizeof(TRACKMOUSEEVENT);
 			tme.dwFlags = TME_HOVER | TME_LEAVE;
 			tme.dwHoverTime = 1;
@@ -1099,16 +1126,16 @@ LRESULT DialogManage::TabSkins::SkinsTreeViewSubclass(HWND hwnd, UINT msg, WPARA
 
 std::wstring DialogManage::TabSkins::GetTreeSelectionPath(HWND tree)
 {
-	WCHAR buffer[MAX_PATH];
+	WCHAR buffer[MAX_PATH] = { 0 };
 
 	// Get current selection name
-	TVITEM tvi = {0};
+	TVITEM tvi = { 0 };
 	tvi.hItem = TreeView_GetSelection(tree);
 	tvi.mask = TVIF_TEXT;
 	tvi.pszText = buffer;
-	tvi.cchTextMax = MAX_PATH;
+	tvi.cchTextMax = _countof(buffer);
 	TreeView_GetItem(tree, &tvi);
-	
+
 	std::wstring path = buffer;
 	while ((tvi.hItem = TreeView_GetParent(tree, tvi.hItem)) != nullptr)
 	{
@@ -1173,8 +1200,8 @@ int DialogManage::TabSkins::PopulateTree(HWND tree, TVINSERTSTRUCT& tvi, int ind
 */
 void DialogManage::TabSkins::SelectTreeItem(HWND tree, HTREEITEM item, LPCWSTR name)
 {
-	WCHAR buffer[MAX_PATH];
-	TVITEM tvi = {0};
+	WCHAR buffer[MAX_PATH] = { 0 };
+	TVITEM tvi = { 0 };
 	tvi.mask = TVIF_TEXT;
 	tvi.hItem = item;
 	tvi.pszText = buffer;
@@ -1317,7 +1344,7 @@ INT_PTR DialogManage::TabSkins::OnCommand(WPARAM wParam, LPARAM lParam)
 					m_HandleCommands = true;
 
 					// Fake selection change to update controls
-					NMHDR nm;
+					NMHDR nm = { 0 };
 					nm.code = TVN_SELCHANGED;
 					nm.idFrom = Id_SkinsTreeView;
 					nm.hwndFrom = GetControl(Id_SkinsTreeView);
@@ -1619,7 +1646,7 @@ INT_PTR DialogManage::TabSkins::OnNotify(WPARAM wParam, LPARAM lParam)
 		{
 			POINT pt = System::GetCursorPosition();
 
-			TVHITTESTINFO ht;
+			TVHITTESTINFO ht = { 0 };
 			ht.pt = pt;
 			ScreenToClient(nm->hwndFrom, &ht.pt);
 
@@ -1635,7 +1662,7 @@ INT_PTR DialogManage::TabSkins::OnNotify(WPARAM wParam, LPARAM lParam)
 		{
 			POINT pt = System::GetCursorPosition();
 
-			TVHITTESTINFO ht;
+			TVHITTESTINFO ht = { 0 };
 			ht.pt = pt;
 			ScreenToClient(nm->hwndFrom, &ht.pt);
 
@@ -1650,7 +1677,7 @@ INT_PTR DialogManage::TabSkins::OnNotify(WPARAM wParam, LPARAM lParam)
 				if (TreeView_GetItem(nm->hwndFrom, &tvi))
 				{
 					HMENU menu = nullptr;
-					MENUITEMINFO mii = {0};
+					MENUITEMINFO mii = { 0 };
 					mii.cbSize = sizeof(MENUITEMINFO);
 					mii.fMask = MIIM_STRING;
 
@@ -1724,14 +1751,14 @@ INT_PTR DialogManage::TabSkins::OnNotify(WPARAM wParam, LPARAM lParam)
 			// Temporarily disable handling commands
 			m_HandleCommands = false;
 
-			WCHAR buffer[MAX_PATH];
+			WCHAR buffer[MAX_PATH] = { 0 };
 
 			// Get current selection name
-			TVITEM tvi = {0};
+			TVITEM tvi = { 0 };
 			tvi.hItem = TreeView_GetSelection(nm->hwndFrom);
 			tvi.mask = TVIF_TEXT | TVIF_CHILDREN;
 			tvi.pszText = buffer;
-			tvi.cchTextMax = MAX_PATH;
+			tvi.cchTextMax = _countof(buffer);
 			TreeView_GetItem(nm->hwndFrom, &tvi);
 
 			if (tvi.cChildren == 0)
@@ -1739,7 +1766,7 @@ INT_PTR DialogManage::TabSkins::OnNotify(WPARAM wParam, LPARAM lParam)
 				// Current selection is file
 				m_SkinFileName = buffer;
 				tvi.mask = TVIF_TEXT;
-			
+
 				// Loop through parents to get skin folder
 				m_SkinFolderPath.clear();
 				while ((tvi.hItem = TreeView_GetParent(nm->hwndFrom, tvi.hItem)) != nullptr)
@@ -1909,11 +1936,11 @@ INT_PTR DialogManage::TabLayouts::OnCommand(WPARAM wParam, LPARAM lParam)
 				EnableWindow(item, TRUE);
 				item = GetControl(Id_EditButton);
 				EnableWindow(item, TRUE);
-				
+
 				const std::vector<std::wstring>& layouts = GetRainmeter().GetAllLayouts();
 				item  = GetControl(Id_List);
 				int sel = ListBox_GetCurSel(item);
-				
+
 				item = GetControl(Id_NameLabel);
 				Edit_SetText(item, layouts[sel].c_str());
 			}
@@ -1931,7 +1958,7 @@ INT_PTR DialogManage::TabLayouts::OnCommand(WPARAM wParam, LPARAM lParam)
 			CreateDirectory(path.c_str(), 0);
 
 			path += layout;
-			bool alreadyExists = (_waccess(path.c_str(), 0) != -1);
+			bool alreadyExists = (_waccess_s(path.c_str(), 0) == 0);
 			if (alreadyExists)
 			{
 				std::wstring text = GetFormattedString(ID_STR_THEMEALREADYEXISTS, layout.c_str());
@@ -2246,6 +2273,12 @@ INT_PTR DialogManage::TabGameMode::OnCommand(WPARAM wParam, LPARAM lParam)
 				list.clear();
 				for (auto& line : tokens)
 				{
+					// No self-references
+					if (_wcsicmp(line.c_str(), L"Rainmeter.exe") == 0)
+					{
+						continue;
+					}
+
 					list += line;
 					if (line != tokens.back())
 					{
@@ -2437,11 +2470,11 @@ void DialogManage::TabSettings::Initialize()
 	Button_SetCheck(GetControl(Id_AutoInstallCheckBox), !GetRainmeter().GetDisableAutoUpdate());
 	EnableWindow(GetControl(Id_AutoInstallCheckBox), check);
 
-	Button_SetCheck(GetControl(Id_LockSkinsCheckBox), GetRainmeter().GetDisableDragging());
+	UpdateDraggableCheckBox();
 	Button_SetCheck(GetControl(Id_LogToFileCheckBox), GetLogger().IsLogToFile());
 	Button_SetCheck(GetControl(Id_VerboseLoggingCheckBox), GetRainmeter().GetDebug());
 
-	BOOL isLogFile = (_waccess(GetLogger().GetLogFilePath().c_str(), 0) != -1);
+	BOOL isLogFile = (_waccess_s(GetLogger().GetLogFilePath().c_str(), 0) == 0);
 	EnableWindow(GetControl(Id_ShowLogFileButton), isLogFile);
 	EnableWindow(GetControl(Id_DeleteLogFileButton), isLogFile);
 
@@ -2465,6 +2498,11 @@ void DialogManage::TabSettings::UpdateLanguageStatus()
 	HWND item = GetControl(Id_LanguageUpdateLink);
 	SetWindowText(item, lang.c_str());
 	ShowWindow(item, GetRainmeter().GetLanguageStatus() ? SW_SHOWNOACTIVATE : SW_HIDE);
+}
+
+void DialogManage::TabSettings::UpdateDraggableCheckBox()
+{
+	Button_SetCheck(GetControl(Id_LockSkinsCheckBox), GetRainmeter().GetDisableDragging());
 }
 
 void DialogManage::TabSettings::Update()
@@ -2569,7 +2607,7 @@ INT_PTR DialogManage::TabSettings::OnCommand(WPARAM wParam, LPARAM lParam)
 
 	case Id_DeleteLogFileButton:
 		GetLogger().DeleteLogFile();
-		if (_waccess(GetLogger().GetLogFilePath().c_str(), 0) == -1)
+		if (_waccess_s(GetLogger().GetLogFilePath().c_str(), 0) != 0)
 		{
 			Button_SetCheck(GetControl(Id_LogToFileCheckBox), BST_UNCHECKED);
 			EnableWindow(GetControl(Id_ShowLogFileButton), FALSE);
@@ -2585,7 +2623,7 @@ INT_PTR DialogManage::TabSettings::OnCommand(WPARAM wParam, LPARAM lParam)
 		else
 		{
 			GetLogger().StartLogFile();
-			if (_waccess(GetLogger().GetLogFilePath().c_str(), 0) != -1)
+			if (_waccess_s(GetLogger().GetLogFilePath().c_str(), 0) == 0)
 			{
 				EnableWindow(GetControl(Id_ShowLogFileButton), TRUE);
 				EnableWindow(GetControl(Id_DeleteLogFileButton), TRUE);
@@ -2610,11 +2648,11 @@ INT_PTR DialogManage::TabSettings::OnCommand(WPARAM wParam, LPARAM lParam)
 
 	case Id_EditorBrowseButton:
 		{
-			WCHAR buffer[MAX_PATH];
+			WCHAR buffer[MAX_PATH] = { 0 };
 			buffer[0] = L'\0';
 
 			std::wstring editor = GetRainmeter().GetSkinEditor();
-			editor = editor.substr(0, editor.find_last_of(L"/\\")).c_str(); 
+			editor = editor.substr(0, editor.find_last_of(L"/\\")).c_str();
 
 			OPENFILENAME ofn = { sizeof(OPENFILENAME) };
 			ofn.Flags = OFN_FILEMUSTEXIST;

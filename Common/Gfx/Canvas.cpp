@@ -12,8 +12,8 @@
 #include "RenderTexture.h"
 #include "Util/D2DUtil.h"
 #include "Util/DWriteFontCollectionLoader.h"
-#include "../../Library/Util.h"
-#include "../../Library/Logger.h"
+
+#include <dxgidebug.h>
 
 namespace Gfx {
 
@@ -42,13 +42,6 @@ Canvas::Canvas() :
 Canvas::~Canvas()
 {
 	Finalize();
-}
-
-bool Canvas::LogComError(HRESULT hr)
-{
-	_com_error err(hr);
-	LogErrorF(L"Error 0x%08x: %s", hr, err.ErrorMessage());
-	return false;
 }
 
 bool Canvas::Initialize(bool hardwareAccelerated)
@@ -83,7 +76,7 @@ bool Canvas::Initialize(bool hardwareAccelerated)
 		// to |c_FeatureLevel|. First, we try to use the hardware driver
 		// and if that fails, we try the WARP rasterizer for cases
 		// where there is no graphics card or other failures.
-		const D3D_FEATURE_LEVEL levels[] = 
+		const D3D_FEATURE_LEVEL levels[] =
 		{
 			D3D_FEATURE_LEVEL_11_1,
 			D3D_FEATURE_LEVEL_11_0,
@@ -150,11 +143,48 @@ bool Canvas::Initialize(bool hardwareAccelerated)
 	return true;
 }
 
+bool Canvas::EnumerateInstalledFontFamilies(UINT32 & familyCount, std::wstring & families)
+{
+	bool success = false;
+	FontCollectionD2D * collection = new FontCollectionD2D();
+	collection->InitializeCollection();
+
+	success = collection->GetSystemFontFamilies(familyCount, families);
+
+	if (collection)
+	{
+		delete collection;
+		collection = nullptr;
+	}
+
+	return success;
+}
+
 void Canvas::Finalize()
 {
 	--c_Instances;
 	if (c_Instances == 0U)
 	{
+
+// Dump extra dxgi debugging information (if needed)
+// On the following line, change |FALSE| to |TRUE|
+#if defined(_DEBUG) && FALSE
+		// More info: https://docs.microsoft.com/en-us/windows/win32/api/dxgidebug/nf-dxgidebug-dxgigetdebuginterface
+		typedef HRESULT(__stdcall* fDebugInterface)(const IID&, void**);
+		HMODULE hDll = GetModuleHandle(L"Dxgidebug.dll");
+		if (hDll)
+		{
+			fDebugInterface DXGIGetDebugInterface = (fDebugInterface)GetProcAddress(hDll, "DXGIGetDebugInterface");
+			IDXGIDebug* pDxgiDebug = nullptr;
+			HRESULT hr = DXGIGetDebugInterface(__uuidof(IDXGIDebug), (void**)&pDxgiDebug);
+			if (SUCCEEDED(hr))
+			{
+				pDxgiDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);  // Use |DXGI_DEBUG_RLO_SUMMARY| if needed
+				pDxgiDebug->Release();
+			}
+		}
+#endif
+
 		c_D3DDevice.Reset();
 		c_D3DContext.Reset();
 		c_D2DDevice.Reset();
@@ -170,8 +200,16 @@ void Canvas::Finalize()
 	}
 }
 
-bool Canvas::InitializeRenderTarget(HWND hwnd)
+bool Canvas::InitializeRenderTarget(HWND hwnd, LONG* errCode)
 {
+	HRESULT hr = E_FAIL;
+
+	auto cleanUp = [&]() -> bool
+	{
+		*errCode = hr;
+		return false;
+	};
+
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc = { 0 };
 	swapChainDesc.Width = 1U;
 	swapChainDesc.Height = 1U;
@@ -187,16 +225,16 @@ bool Canvas::InitializeRenderTarget(HWND hwnd)
 	swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
 
 	Microsoft::WRL::ComPtr<IDXGIAdapter> dxgiAdapter;
-	HRESULT hr = c_DxgiDevice->GetAdapter(dxgiAdapter.GetAddressOf());
-	if (FAILED(hr)) return LogComError(hr);
+	hr = c_DxgiDevice->GetAdapter(dxgiAdapter.GetAddressOf());
+	if (FAILED(hr)) return cleanUp();
 
 	// Ensure that DXGI does not queue more than one frame at a time.
 	hr = c_DxgiDevice->SetMaximumFrameLatency(1U);
-	if (FAILED(hr)) return LogComError(hr);
+	if (FAILED(hr)) return cleanUp();
 
 	Microsoft::WRL::ComPtr<IDXGIFactory2> dxgiFactory;
 	hr = dxgiAdapter->GetParent(IID_PPV_ARGS(dxgiFactory.GetAddressOf()));
-	if (FAILED(hr)) return LogComError(hr);
+	if (FAILED(hr)) return cleanUp();
 
 	hr = dxgiFactory->CreateSwapChainForHwnd(
 		c_DxgiDevice.Get(),
@@ -205,12 +243,19 @@ bool Canvas::InitializeRenderTarget(HWND hwnd)
 		nullptr,
 		nullptr,
 		m_SwapChain.ReleaseAndGetAddressOf());
-	if (FAILED(hr)) return LogComError(hr);
+	if (FAILED(hr)) return cleanUp();
+
+	// Prevent DXGI from monitoring window changes through "alt + enter" (full screen mode)
+	hr = dxgiFactory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
+	if (FAILED(hr))
+	{
+		*errCode = hr;  // Non-fatal error
+	}
 
 	hr = CreateRenderTarget();
-	if (FAILED(hr)) return LogComError(hr);
+	if (FAILED(hr)) return cleanUp();
 
-	return CreateTargetBitmap(0U, 0U);
+	return CreateTargetBitmap(0U, 0U, errCode);
 }
 
 void Canvas::Resize(int w, int h)
@@ -388,7 +433,7 @@ void Canvas::DrawTextW(const std::wstring& srcStr, const TextFormat& format, con
 		rect.bottom - rect.top,
 		!m_AccurateText && m_TextAntiAliasing)) return;
 
-	D2D1_POINT_2F drawPosition;
+	D2D1_POINT_2F drawPosition = D2D1::Point2F();
 	drawPosition.x = [&]()
 	{
 		if (!m_AccurateText)
@@ -427,7 +472,9 @@ void Canvas::DrawTextW(const std::wstring& srcStr, const TextFormat& format, con
 		formatD2D.ApplyInlineColoring(m_Target.Get(), &drawPosition);
 
 		// Draw any 'shadow' effects
-		formatD2D.ApplyInlineShadow(m_Target.Get(), solidBrush.Get(), strLen, drawPosition);
+		const D2D1_RECT_F drawRect = D2D1::RectF(
+			drawPosition.x, drawPosition.y, rect.right - rect.left, rect.bottom - rect.top);
+		formatD2D.ApplyInlineShadow(m_Target.Get(), solidBrush.Get(), strLen, drawRect);
 	}
 
 	if (formatD2D.m_Trimming)
@@ -511,12 +558,11 @@ bool Canvas::MeasureTextLinesW(const std::wstring& str, const TextFormat& format
 	return true;
 }
 
-void Canvas::DrawBitmap(const D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, const D2D1_RECT_F& srcRect)
+void Canvas::DrawBitmap(D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, const D2D1_RECT_F& srcRect)
 {
-	auto& segments = bitmap->m_Segments;
-	for (auto seg : segments)
+	for (auto& segment : bitmap->m_Segments)
 	{
-		const auto rSeg = seg.GetRect();
+		const auto& rSeg = segment.GetRect();
 		D2D1_RECT_F rSrc = (rSeg.left < rSeg.right && rSeg.top < rSeg.bottom) ?
 			D2D1::RectF(
 				max(rSeg.left, srcRect.left),
@@ -544,11 +590,11 @@ void Canvas::DrawBitmap(const D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, con
 			rSrc.left -= m_MaxBitmapSize;
 		}
 
-		m_Target->DrawBitmap(seg.GetBitmap(), rDst, 1.0f, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, &rSrc);
+		m_Target->DrawBitmap(segment.GetBitmap(), rDst, 1.0f, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, &rSrc);
 	}
 }
 
-void Canvas::DrawTiledBitmap(const D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, const D2D1_RECT_F& srcRect)
+void Canvas::DrawTiledBitmap(D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, const D2D1_RECT_F& srcRect)
 {
 	const FLOAT width = (FLOAT)bitmap->m_Width;
 	const FLOAT height = (FLOAT)bitmap->m_Height;
@@ -574,7 +620,7 @@ void Canvas::DrawTiledBitmap(const D2DBitmap* bitmap, const D2D1_RECT_F& dstRect
 	}
 }
 
-void Canvas::DrawMaskedBitmap(const D2DBitmap* bitmap, const D2DBitmap* maskBitmap, const D2D1_RECT_F& dstRect,
+void Canvas::DrawMaskedBitmap(D2DBitmap* bitmap, D2DBitmap* maskBitmap, const D2D1_RECT_F& dstRect,
 	const D2D1_RECT_F& srcRect, const D2D1_RECT_F& srcRect2)
 {
 	if (!bitmap || !maskBitmap) return;
@@ -598,7 +644,7 @@ void Canvas::DrawMaskedBitmap(const D2DBitmap* bitmap, const D2DBitmap* maskBitm
 			(r1.bottom - r1.top) / height * r2.bottom);
 	};
 
-	for (auto bseg : bitmap->m_Segments)
+	for (auto& bseg : bitmap->m_Segments)
 	{
 		const auto rSeg = bseg.GetRect();
 		const auto rDst = getRectSubRegion(rSeg, dstRect);
@@ -624,7 +670,7 @@ void Canvas::DrawMaskedBitmap(const D2DBitmap* bitmap, const D2DBitmap* maskBitm
 		const auto aaMode = m_Target->GetAntialiasMode();
 		m_Target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED); // required
 
-		for (auto mseg : maskBitmap->m_Segments)
+		for (auto& mseg : maskBitmap->m_Segments)
 		{
 			const auto rmSeg = mseg.GetRect();
 			const auto rmDst = getRectSubRegion(rmSeg, dstRect);
@@ -672,7 +718,7 @@ void Canvas::FillGradientRectangle(const D2D1_RECT_F& rect, const D2D1_COLOR_F& 
 
 	Microsoft::WRL::ComPtr<ID2D1GradientStopCollection> pGradientStops;
 
-	D2D1_GRADIENT_STOP gradientStops[2];
+	D2D1_GRADIENT_STOP gradientStops[2] = { 0 };
 	gradientStops[0].color = color1;
 	gradientStops[0].position = 0.0f;
 	gradientStops[1].color = color2;
@@ -773,10 +819,14 @@ HRESULT Canvas::CreateRenderTarget()
 	return hr;
 }
 
-bool Canvas::CreateTargetBitmap(UINT32 width, UINT32 height)
+bool Canvas::CreateTargetBitmap(UINT32 width, UINT32 height, LONG* errCode)
 {
 	HRESULT hr = m_SwapChain->GetBuffer(0U, IID_PPV_ARGS(m_BackBuffer.GetAddressOf()));
-	if (FAILED(hr)) return LogComError(hr);
+	if (FAILED(hr))
+	{
+		if (errCode) *errCode = hr;
+		return false;
+	}
 
 	D2D1_BITMAP_PROPERTIES1 bProps = D2D1::BitmapProperties1(
 		D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
@@ -786,7 +836,11 @@ bool Canvas::CreateTargetBitmap(UINT32 width, UINT32 height)
 		m_BackBuffer.Get(),
 		&bProps,
 		m_TargetBitmap.GetAddressOf());
-	if (FAILED(hr)) return LogComError(hr);
+	if (FAILED(hr))
+	{
+		if (errCode) *errCode = hr;
+		return false;
+	}
 
 	m_Target->SetTarget(m_TargetBitmap.Get());
 	return true;

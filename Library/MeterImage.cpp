@@ -134,7 +134,7 @@ void MeterImage::ReadOptions(ConfigParser& parser, const WCHAR* section)
 		}
 	}
 
-	static const RECT defMargins = {0};
+	static const RECT defMargins = { 0 };
 	m_ScaleMargins = parser.ReadRECT(section, L"ScaleMargins", defMargins);
 
 	// Deprecated!
@@ -215,7 +215,7 @@ bool MeterImage::Draw(Gfx::Canvas& canvas)
 
 		int imageW = drawBitmap->GetWidth();
 		int imageH = drawBitmap->GetHeight();
-		
+
 		if (imageW == 0 || imageH == 0 || m_W == 0 || m_H == 0) return true;
 
 		D2D1_RECT_F meterRect = GetMeterRectPadding();

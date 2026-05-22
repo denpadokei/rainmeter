@@ -131,6 +131,7 @@ public:
 	void EditSettings();
 	void EditSkinFile(const std::wstring& name, const std::wstring& iniFile);
 	void OpenSkinFolder(const std::wstring& name = std::wstring());
+	bool DoesSkinHaveSettings(const std::wstring& folderPath);
 
 	void ReadStats();
 	void WriteStats(bool bForce);
@@ -186,6 +187,7 @@ public:
 	D2D1_COLOR_F& GetDefaultSelectionColor() { return m_DefaultSelectedColor; }
 
 	const std::wstring& GetBuildTime() { return m_BuildTime; }
+	const std::wstring& GetBuildHash() { return m_BuildHash; }
 
 	static const std::vector<LPCWSTR>& GetOldDefaultPlugins();
 
@@ -222,6 +224,8 @@ private:
 	void CreateComponentFolders(bool defaultIniLocation);
 	void TestSettingsFile(bool bDefaultIniLocation);
 	void CheckSettingsFileEncoding(const std::wstring& iniFile, std::wstring* log);
+
+	void ShowTrayIconIfNecessary();
 
 	TrayIcon* m_TrayIcon;
 
@@ -290,6 +294,7 @@ private:
 	GlobalOptions m_GlobalOptions;
 
 	std::wstring m_BuildTime;
+	std::wstring m_BuildHash;
 };
 
 // Convenience function.

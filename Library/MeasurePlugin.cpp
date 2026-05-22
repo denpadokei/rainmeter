@@ -11,6 +11,8 @@
 #include "Export.h"
 #include "System.h"
 
+std::unordered_map<std::wstring, UINT> MeasurePlugin::s_PluginReferences;
+
 MeasurePlugin::MeasurePlugin(Skin* skin, const WCHAR* name) : Measure(skin, name),
 	m_Plugin(),
 	m_ReloadFunc(),
@@ -37,6 +39,36 @@ MeasurePlugin::~MeasurePlugin()
 			else
 			{
 				((FINALIZE)finalizeFunc)(m_Plugin, m_ID);
+			}
+		}
+
+		// Debug mode
+		if (GetRainmeter().GetDebug())
+		{
+			WCHAR pluginPath[MAX_PATH] = { 0 };
+			if (GetModuleFileName(m_Plugin, pluginPath, _countof(pluginPath)) > 0UL)
+			{
+				// Sometimes GetModuleFileName and/or LoadLibrary retrieves portions of the path
+				// in the wrong case (ex. ".DLL", instead of ".dll"), so get the actual file path
+				if (GetLongPathName(pluginPath, pluginPath, _countof(pluginPath)) > 0UL)
+				{
+					std::wstring tmpStr = pluginPath;
+					StringUtil::ToLowerCase(tmpStr);
+
+					auto iter = s_PluginReferences.find(tmpStr);
+					if (iter != s_PluginReferences.end())
+					{
+						--iter->second;
+						if (iter->second == 0)
+						{
+							if (GetRainmeter().GetDebug())
+							{
+								LogDebugF(L"Plugin unloaded: %s", pluginPath);
+							}
+							s_PluginReferences.erase(tmpStr);
+						}
+					}
+				}
 			}
 		}
 
@@ -90,7 +122,7 @@ void MeasurePlugin::ReadOptions(ConfigParser& parser, const WCHAR* section)
 		{
 			((NEWRELOAD)m_ReloadFunc)(m_PluginData, this, &m_MaxValue);
 		}
-		
+
 		// DynamicVariables doesn't work with old plugins
 		return;
 	}
@@ -105,6 +137,15 @@ void MeasurePlugin::ReadOptions(ConfigParser& parser, const WCHAR* section)
 	else
 	{
 		pluginName = plugin;
+	}
+
+	// Append ".dll" if it doesn't exist (for debug mode)
+	if (GetRainmeter().GetDebug())
+	{
+		if (_wcsicmp(PathFindExtension(plugin.c_str()), L"") == 0)
+		{
+			pluginName.append(L".dll");
+		}
 	}
 
 	// First try from program path
@@ -126,6 +167,36 @@ void MeasurePlugin::ReadOptions(ConfigParser& parser, const WCHAR* section)
 				this, L"Plugin: Unable to load \"%s\" (error %ld)",
 				pluginName.c_str(), GetLastError());
 			return;
+		}
+	}
+
+	// Log plugin references (debug mode)
+	if (GetRainmeter().GetDebug())
+	{
+		WCHAR pluginPath[MAX_PATH] = { 0 };
+		if (GetModuleFileName(m_Plugin, pluginPath, _countof(pluginPath)) > 0UL)
+		{
+			// Sometimes GetModuleFileName and/or LoadLibrary retrieves portions of the path
+			// in the wrong case (ex. ".DLL", instead of ".dll"), so get the actual file path
+			if (GetLongPathName(pluginPath, pluginPath, _countof(pluginPath)) > 0UL)
+			{
+				std::wstring tmpStr = pluginPath;
+				StringUtil::ToLowerCase(tmpStr);
+
+				auto iter = s_PluginReferences.find(tmpStr);
+				if (iter == s_PluginReferences.end())
+				{
+					s_PluginReferences.emplace(tmpStr, 1U);
+					if (GetRainmeter().GetDebug())
+					{
+						LogDebugF(L"Plugin loaded: %s", pluginPath);
+					}
+				}
+				else
+				{
+					++iter->second;
+				}
+			}
 		}
 	}
 
@@ -242,13 +313,15 @@ void MeasurePlugin::Command(const std::wstring& command)
 	}
 }
 
-bool MeasurePlugin::CommandWithReturn(const std::wstring& command, std::wstring& strValue)
+bool MeasurePlugin::CommandWithReturn(const std::wstring& command, std::wstring& strValue, void* delayedLogEntry)
 {
 	if (!m_Initialized)
 	{
 		strValue = L"0";
 		return true;
 	}
+
+	WCHAR errMsg[MAX_LINE_LENGTH];
 
 	size_t sPos = command.find_first_of(L'(');
 	if (sPos != std::wstring::npos)
@@ -258,7 +331,26 @@ bool MeasurePlugin::CommandWithReturn(const std::wstring& command, std::wstring&
 			sPos > ePos ||
 			command.size() < 3)
 		{
-			LogErrorF(this, L"Invalid function call: %s", command.c_str());
+			_snwprintf_s(errMsg, _TRUNCATE, L"Invalid function call: %s", command.c_str());
+			if (delayedLogEntry)
+			{
+				std::wstring source = m_Skin->GetSkinPath();
+				source += L" - [";
+				source += GetOriginalName();
+				source += L']';
+
+				// Since plugins can accept single brackets as input, the nested variable parser
+				// can send incomplete section variable to the plugin, so store a delayed message
+				// in case the "actual" section variable is invalid. If the "final" variable the
+				// parser finds is a valid variable, this error message will not be logged.
+				// See: |ConfigParser::ParseVariables|
+				auto* log = (Logger::Entry*)delayedLogEntry;
+				*log = { Logger::Level::Error, L"", source.c_str(), errMsg };
+			}
+			else
+			{
+				LogErrorF(this, errMsg);
+			}
 			return false;
 		}
 
@@ -285,6 +377,7 @@ bool MeasurePlugin::CommandWithReturn(const std::wstring& command, std::wstring&
 		std::vector<LPCWSTR> args;
 		for (auto& str : _args)
 		{
+			StringUtil::StripLeadingAndTrailingQuotes(str, true);
 			args.emplace_back(str.c_str());
 		}
 

@@ -8,6 +8,7 @@
 #include "StdAfx.h"
 #include "../../Common/StringUtil.h"
 #include "../../Common/FileUtil.h"
+#include "../../Common/MathParser.h"
 #include "LuaScript.h"
 #include "LuaHelper.h"
 #include "Measure.h"
@@ -179,13 +180,12 @@ void LuaScript::RunFunction(const char* funcName)
 }
 
 /*
-** Runs given function in script file and stores the retruned number or string.
+** Runs given function in script file and stores the returned number or string.
 **
 */
 int LuaScript::RunFunctionWithReturn(const char* funcName, double& numValue, std::wstring& strValue)
 {
 	auto L = GetState();
-	int type = LUA_TNIL;
 
 	if (IsInitialized())
 	{
@@ -195,32 +195,59 @@ int LuaScript::RunFunctionWithReturn(const char* funcName, double& numValue, std
 		// Push the function onto the stack
 		lua_getfield(L, -1, funcName);
 
-		if (lua_pcall(L, 0, 1, 0))
+		if (lua_pcall(L, 0, 2, 0))
 		{
 			LuaHelper::ReportErrors();
-			lua_pop(L, 1);
+			lua_pop(L, 2);
 		}
 		else
 		{
-			type = lua_type(L, -1);
-			if (type == LUA_TNUMBER)
-			{
-				numValue = lua_tonumber(L, -1);
-			}
-			else if (type == LUA_TSTRING)
-			{
-				size_t strLen = 0;
-				const char* str = lua_tolstring(L, -1, &strLen);
-				strValue = m_Unicode ?
-					StringUtil::WidenUTF8(str, (int)strLen) : StringUtil::Widen(str, (int)strLen);
-				numValue = strtod(str, nullptr);
-			}
+			bool hasNumberResult = false;
+			bool hasStringResult = false;
 
-			lua_pop(L, 2);
+			auto getReturnedValue = [&]() -> void
+			{
+				int type = lua_type(L, -1);
+				switch (type)
+				{
+					case LUA_TNUMBER:
+						numValue = lua_tonumber(L, -1);
+						hasNumberResult = true;
+						break;
+
+					case LUA_TSTRING:
+						if (!hasStringResult)
+						{
+							size_t strLen = 0;
+							const char* str = lua_tolstring(L, -1, &strLen);
+							strValue = m_Unicode ?
+								StringUtil::WidenUTF8(str, (int)strLen) : StringUtil::Widen(str, (int)strLen);
+
+							hasStringResult = true;
+							if (!hasNumberResult)
+							{
+								// Only convert the string value to number if number value has not been set
+								numValue = strtod(str, nullptr);
+								hasNumberResult = true;
+							}
+
+						}
+						break;
+				}
+				lua_pop(L, 1);  // Remove the returned value from the stack
+			};
+
+			getReturnedValue();  // Get first returned value
+			getReturnedValue();  // Get second returned value
+
+			lua_settop(L, 0);  // Remove any remaining items from the stack
+
+			if (hasStringResult) return LUA_TSTRING;
+			if (hasNumberResult) return LUA_TNUMBER;
 		}
 	}
 
-	return type;
+	return LUA_TNIL;
 }
 
 /*
@@ -277,38 +304,60 @@ bool LuaScript::RunCustomFunction(const std::wstring& funcName, const std::vecto
 
 	// Add args
 	int numArgs = 0;
-	if (args.size() > 0)
+	if (args.size() > 0ULL)
 	{
-		for (const auto& iter : args)
+		for (auto iter : args)
 		{
-			std::string arg = m_Unicode ?
-				StringUtil::NarrowUTF8(iter) : StringUtil::Narrow(iter);
-			size_t argSize = arg.size();
-			if ((arg[0] == '\"' || arg[0] == '\'') && argSize > 1)
+			if (lua_checkstack(L, 1) == FALSE)
 			{
-				arg.erase(0, 1); // strip begin quote
-				--argSize;
-
-				auto ch = arg.back();
-				if (ch == '\"' || ch == '\'')
-				{
-					arg.pop_back();  // strip last quote
-					--argSize;
-				}
-
-				lua_pushlstring(L, arg.c_str(), argSize);
+				strValue = L"Lua: Could not increase the stack size";
+				return false;
 			}
-			else if (arg == "true")
+
+			size_t argSize = iter.size();
+			if ((iter[0] == L'\"' || iter[0] == L'\'') && argSize > 1ULL)
+			{
+				argSize = StringUtil::StripLeadingAndTrailingQuotes(iter, true);
+
+				std::string arg = m_Unicode ?
+					StringUtil::NarrowUTF8(iter) : StringUtil::Narrow(iter);
+
+				lua_pushlstring(L, arg.c_str(), arg.size());
+			}
+			else if (_wcsicmp(iter.c_str(), L"true") == 0)
 			{
 				lua_pushboolean(L, 1);
 			}
-			else if (arg == "false")
+			else if (_wcsicmp(iter.c_str(), L"false") == 0)
 			{
 				lua_pushboolean(L, 0);
 			}
+			else if (_wcsicmp(iter.c_str(), L"nil") == 0)
+			{
+				lua_pushnil(L);
+			}
 			else
 			{
-				double num = strtod(arg.c_str(), nullptr);
+				double num = 0.0;
+				const WCHAR* str = iter.c_str();
+				if (*str == L'(')
+				{
+					const WCHAR* errMsg = MathParser::CheckedParse(str, &num);
+					if (errMsg)
+					{
+						strValue = L"Formula: ";
+						strValue += errMsg;
+						strValue += L" in parameter: \"";
+						strValue += iter;
+						strValue += L'"';
+						return false;
+					}
+				}
+				else
+				{
+					num = wcstod(str, nullptr);
+				}
+
 				lua_pushnumber(L, num);
 			}
 			++numArgs;
@@ -414,7 +463,7 @@ bool LuaScript::GetLuaVariable(const std::wstring& varName, std::wstring& strVal
 		result = false;
 	}
 	else
-	{	
+	{
 		const char* t = lua_typename(L, type);
 		strValue = L"Invalid variable type (";
 		strValue += m_Unicode ?

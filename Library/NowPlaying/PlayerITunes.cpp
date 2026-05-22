@@ -18,10 +18,10 @@ extern HINSTANCE g_Instance;
 PlayerITunes::CEventHandler::CEventHandler(PlayerITunes* player) :
 	m_Player(player),
 	m_RefCount(0UL),
-	m_ConnectionPoint(),
+	m_ConnectionPoint(nullptr),
 	m_ConnectionCookie(0UL)
 {
-	IConnectionPointContainer* icpc;
+	IConnectionPointContainer* icpc = nullptr;
 	m_Player->m_iTunes->QueryInterface(IID_IConnectionPointContainer, (void**)&icpc);
 	icpc->FindConnectionPoint(DIID__IiTunesEvents, &m_ConnectionPoint);
 	m_ConnectionPoint->Advise(this, &m_ConnectionCookie);
@@ -68,11 +68,12 @@ ULONG STDMETHODCALLTYPE PlayerITunes::CEventHandler::Release()
 **
 */
 PlayerITunes::PlayerITunes() : Player(),
-	m_CallbackWindow(),
+	m_TrackID(0L),
+	m_CallbackWindow(nullptr),
 	m_LastCheckTime(0UL),
 	m_iTunesActive(false),
-	m_iTunes(),
-	m_iTunesEvent()
+	m_iTunes(nullptr),
+	m_iTunesEvent(nullptr)
 {
 	// Create windows class
 	WNDCLASS wc = { 0 };
@@ -104,6 +105,7 @@ PlayerITunes::~PlayerITunes()
 	c_Player = nullptr;
 
 	DestroyWindow(m_CallbackWindow);
+	m_CallbackWindow = nullptr;
 	UnregisterClass(L"NowPlayingITunesClass", g_Instance);
 
 	Uninitialize();
@@ -193,7 +195,10 @@ void PlayerITunes::Uninitialize()
 		ClearData();
 
 		m_iTunes->Release();
+		m_iTunes = nullptr;
+
 		delete m_iTunesEvent;
+		m_iTunesEvent = nullptr;
 	}
 }
 
@@ -251,7 +256,7 @@ void PlayerITunes::UpdateData()
 {
 	if (CheckWindow())
 	{
-		// Update player state, reset 
+		// Update player state, reset
 		ITPlayerState state = ITPlayerStateStopped;
 		if (SUCCEEDED(m_iTunes->get_PlayerState(&state)))
 		{
@@ -280,7 +285,7 @@ void PlayerITunes::UpdateData()
 			}
 		}
 
-		// Volume onChange was removed, manually check 
+		// Volume onChange was removed, manually check
 		long volume = 0L;
 		if (SUCCEEDED(m_iTunes->get_SoundVolume(&volume)))
 		{
@@ -333,10 +338,10 @@ void PlayerITunes::UpdateCachedData()
 	HRESULT hr = m_iTunes->get_CurrentTrack(&track);
 	if (SUCCEEDED(hr) && track)
 	{
-		BSTR tmpStr;
+		BSTR tmpStr = nullptr;
 		long tmpVal = 0L;
 
-		// Rating onChange was removed, manually check 
+		// Rating onChange was removed, manually check
 		if (SUCCEEDED(track->get_Rating(&tmpVal)))
 		{
 			tmpVal /= 20L;
@@ -459,7 +464,7 @@ void PlayerITunes::Play()
 ** Handles the Stop bang.
 **
 */
-void PlayerITunes::Stop() 
+void PlayerITunes::Stop()
 {
 	m_iTunes->Stop();
 }
@@ -468,7 +473,7 @@ void PlayerITunes::Stop()
 ** Handles the Next bang.
 **
 */
-void PlayerITunes::Next() 
+void PlayerITunes::Next()
 {
 	m_iTunes->NextTrack();
 }
@@ -477,7 +482,7 @@ void PlayerITunes::Next()
 ** Handles the Previous bang.
 **
 */
-void PlayerITunes::Previous() 
+void PlayerITunes::Previous()
 {
 	m_iTunes->PreviousTrack();
 }

@@ -39,9 +39,10 @@ public:
 	~Canvas();
 
 	static bool Initialize(bool hardwareAccelerated);
+	static bool EnumerateInstalledFontFamilies(UINT32& familyCount, std::wstring& families);
 	static void Finalize();
 
-	bool InitializeRenderTarget(HWND hwnd);
+	bool InitializeRenderTarget(HWND hwnd, LONG* errCode);
 
 	int GetW() const { return m_W; }
 	int GetH() const { return m_H; }
@@ -82,9 +83,9 @@ public:
 	bool MeasureTextW(const std::wstring& srcStr, const TextFormat& format, D2D1_SIZE_F& size);
 	bool MeasureTextLinesW(const std::wstring& srcStr, const TextFormat& format, D2D1_SIZE_F& size, UINT32& lines);
 
-	void DrawBitmap(const D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, const D2D1_RECT_F& srcRect);
-	void DrawTiledBitmap(const D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, const D2D1_RECT_F& srcRect);
-	void DrawMaskedBitmap(const D2DBitmap* bitmap, const D2DBitmap* maskBitmap, const D2D1_RECT_F& dstRect,
+	void DrawBitmap(D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, const D2D1_RECT_F& srcRect);
+	void DrawTiledBitmap(D2DBitmap* bitmap, const D2D1_RECT_F& dstRect, const D2D1_RECT_F& srcRect);
+	void DrawMaskedBitmap(D2DBitmap* bitmap, D2DBitmap* maskBitmap, const D2D1_RECT_F& dstRect,
 		const D2D1_RECT_F& srcRect, const D2D1_RECT_F& srcRect2);
 
 	void FillRectangle(const D2D1_RECT_F& rect, const D2D1_COLOR_F& color);
@@ -120,7 +121,7 @@ private:
 	bool LogComError(HRESULT hr);
 
 	HRESULT CreateRenderTarget();
-	bool CreateTargetBitmap(UINT32 width, UINT32 height);
+	bool CreateTargetBitmap(UINT32 width, UINT32 height, LONG* errCode = nullptr);
 
 	Microsoft::WRL::ComPtr<ID2D1DeviceContext> m_Target;
 	Microsoft::WRL::ComPtr<IDXGISwapChain1> m_SwapChain;

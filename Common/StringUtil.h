@@ -45,6 +45,8 @@ void LTrim(std::wstring& str);
 void RTrim(std::wstring& str);
 void Trim(std::wstring& str);
 
+size_t StripLeadingAndTrailingQuotes(std::wstring& str, bool single = false);
+
 void ToLowerCase(std::wstring& str);
 void ToUpperCase(std::wstring& str);
 void ToProperCase(std::wstring& str);
@@ -71,7 +73,7 @@ std::size_t CaseInsensitiveFind(const T& str1, const T& str2, const std::locale&
 	{
 		return (iter - str1.begin());
 	}
-	
+
 	return -1; // not found
 }
 }  // namespace StringUtil

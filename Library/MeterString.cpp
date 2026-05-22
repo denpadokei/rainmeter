@@ -21,7 +21,7 @@ MeterString::MeterString(Skin* skin, const WCHAR* name) : Meter(skin, name),
 	m_Style(NORMAL),
 	m_Effect(EFFECT_NONE),
 	m_Case(TEXTCASE_NONE),
-	m_FontSize(10),
+	m_FontSize(10.0f),
 	m_Scale(1.0),
 	m_NoDecimals(true),
 	m_Percentual(true),
@@ -117,7 +117,7 @@ void MeterString::ReadOptions(ConfigParser& parser, const WCHAR* section)
 {
 	// Store the current font values so we know if the font needs to be updated
 	std::wstring oldFontFace = m_FontFace;
-	int oldFontSize = m_FontSize;
+	FLOAT oldFontSize = m_FontSize;
 	TEXTSTYLE oldStyle = m_Style;
 	Gfx::HorizontalAlignment oldHAlign = m_TextFormat->GetHorizontalAlignment();
 	Gfx::VerticalAlignment oldVAlign = m_TextFormat->GetVerticalAlignment();
@@ -161,10 +161,10 @@ void MeterString::ReadOptions(ConfigParser& parser, const WCHAR* section)
 		m_FontFace = L"Arial";
 	}
 
-	m_FontSize = parser.ReadInt(section, L"FontSize", 10);
-	if (m_FontSize < 0)
+	m_FontSize = (FLOAT)parser.ReadFloat(section, L"FontSize", 10.0);
+	if (m_FontSize < 0.0f)
 	{
-		m_FontSize = 10;
+		m_FontSize = 10.0f;
 	}
 
 	m_NumOfDecimals = parser.ReadInt(section, L"NumOfDecimals", -1);
@@ -617,76 +617,25 @@ void MeterString::BindMeasures(ConfigParser& parser, const WCHAR* section)
 	}
 }
 
-/*
-** Static helper to log all installed font families.
-**
-** TODO: use Direct2d to enumrate the installed font families.
-** See: https://msdn.microsoft.com/en-us/library/windows/desktop/dd756583(v=vs.85).aspx
-*/
-void MeterString::EnumerateInstalledFontFamilies()
-{
-	INT fontCount;
-	Gdiplus::InstalledFontCollection fontCollection;
-
-	if (Gdiplus::Ok == fontCollection.GetLastStatus())
-	{
-		fontCount = fontCollection.GetFamilyCount();
-		if (fontCount > 0)
-		{
-			INT fontFound;
-
-			Gdiplus::FontFamily* fontFamilies = new Gdiplus::FontFamily[fontCount];
-
-			if (Gdiplus::Ok == fontCollection.GetFamilies(fontCount, fontFamilies, &fontFound))
-			{
-				LogDebugF(L"* Font families: Count=%i", fontCount);
-				std::wstring fonts;
-				for (INT i = 0; i < fontCount; ++i)
-				{
-					WCHAR familyName[LF_FACESIZE];
-					if (Gdiplus::Ok == fontFamilies[i].GetFamilyName(familyName))
-					{
-						if (*familyName)
-						{
-							fonts += familyName;
-						}
-					}
-					else
-					{
-						fonts += L"***";
-					}
-
-					if (*familyName && i != (fontCount - 1))
-					{
-						fonts += L", ";
-					}
-				}
-				LogDebug(fonts.c_str());
-			}
-			else
-			{
-				LogError(L"Font enumeration: GetFamilies failed");
-			}
-
-			delete [] fontFamilies;
-		}
-		else
-		{
-			LogWarning(L"No installed fonts");
-		}
-	}
-	else
-	{
-		LogError(L"Font enumeration: InstalledFontCollection failed");
-	}
-}
-
 void MeterString::InitializeStatic()
 {
 	if (GetRainmeter().GetDebug())
 	{
 		LogDebug(L"------------------------------");
-		EnumerateInstalledFontFamilies();
+
+		UINT32 familyCount = 0U;
+		std::wstring families;
+		bool success = Gfx::Canvas::EnumerateInstalledFontFamilies(familyCount, families);
+		LogDebugF(L"* Font families: Count=%i", familyCount);
+		if (success)
+		{
+			LogDebug(families.c_str());
+		}
+		else
+		{
+			LogError(families.c_str());
+		}
+
 		LogDebug(L"------------------------------");
 	}
 }

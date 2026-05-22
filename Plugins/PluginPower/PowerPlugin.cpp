@@ -47,7 +47,7 @@ struct MeasureData
 	DWORD cachedBatteryLifeTime;
 
 	void* rm;
-	
+
 	MeasureData() : type(POWER_UNKNOWN), suppressError(false), updated(false), cachedBatteryLifeTime(0UL), rm(nullptr) {}
 };
 
@@ -161,7 +161,8 @@ PLUGIN_EXPORT double Update(void* data)
 					RmLogF(measure->rm, LOG_ERROR, L"Processor power status error: 0x%08x", status);
 					measure->suppressError = true;
 				}
-				delete[] ppi;
+				delete [] ppi;
+				ppi = nullptr;
 				return value;
 			}
 		}
@@ -233,12 +234,12 @@ PLUGIN_EXPORT LPCWSTR GetString(void* data)
 		}
 		else
 		{
-			tm time = {0};
+			tm time = { 0 };
 			time.tm_sec = value % 60;
 			time.tm_min = (value / 60) % 60;
 			time.tm_hour = value / 60 / 60;
 
-			_invalid_parameter_handler oldHandler = _set_invalid_parameter_handler(NullCRTInvalidParameterHandler);
+			_invalid_parameter_handler oldHandler = _set_thread_local_invalid_parameter_handler(NullCRTInvalidParameterHandler);
 			_CrtSetReportMode(_CRT_ASSERT, 0);
 
 			errno = 0;
@@ -248,7 +249,7 @@ PLUGIN_EXPORT LPCWSTR GetString(void* data)
 				buffer[0] = L'\0';
 			}
 
-			_set_invalid_parameter_handler(oldHandler);
+			_set_thread_local_invalid_parameter_handler(oldHandler);
 
 			return buffer;
 		}
@@ -261,4 +262,5 @@ PLUGIN_EXPORT void Finalize(void* data)
 {
 	MeasureData* measure = (MeasureData*)data;
 	delete measure;
+	measure = nullptr;
 }

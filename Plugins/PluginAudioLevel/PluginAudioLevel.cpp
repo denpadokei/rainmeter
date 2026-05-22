@@ -364,6 +364,7 @@ PLUGIN_EXPORT void Finalize (void* data)
 	}
 
 	delete m;
+	m = nullptr;
 }
 
 
@@ -710,9 +711,9 @@ PLUGIN_EXPORT double Update (void* data)
 					for (unsigned int iChan = 0; iChan < m->m_wfx->nChannels; ++iChan)
 					{
 						memset(m->m_bandOut[iChan], 0, m->m_nBands * sizeof(float));
-						int iBin = 0;
+						int iBin = (int)roundf((float)m->m_freqMin / df);
 						int iBand = 0;
-						float f0 = 0.0f;
+						float f0 = (float)m->m_freqMin;
 
 						while (iBin <= (m->m_fftSize / 2) && iBand < m->m_nBands)
 						{
@@ -1178,7 +1179,7 @@ HRESULT	Measure::DeviceInit ()
 
 		hr = m_clAudio->Initialize(AUDCLNT_SHAREMODE_SHARED, m_port == PORT_OUTPUT ? AUDCLNT_STREAMFLAGS_LOOPBACK : 0,
 			hnsRequestedDuration, 0, m_wfx, NULL);
-		if (hr != S_OK) 
+		if (hr != S_OK)
 		{
 			// stereo waveformat didnt work either, throw an error
 			RmLog(LOG_WARNING, L"Failed to initialize audio client.");

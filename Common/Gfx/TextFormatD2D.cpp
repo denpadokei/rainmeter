@@ -79,7 +79,7 @@ bool TextFormatD2D::CreateLayout(ID2D1DeviceContext* target, const std::wstring&
 
 	bool strChanged = false;
 	if (strLen != m_LastString.length() ||
-		memcmp(str, m_LastString.c_str(), (strLen + 1) * sizeof(WCHAR)) != 0)
+		memcmp(str, m_LastString.c_str(), ((size_t)strLen + 1ULL) * sizeof(WCHAR)) != 0)
 	{
 		strChanged = true;
 		m_LastString.assign(str, strLen);
@@ -115,7 +115,7 @@ bool TextFormatD2D::CreateLayout(ID2D1DeviceContext* target, const std::wstring&
 
 		// Because the text layout can be created without any changes to any
 		// 'color' inline options, we need a way to update any color changes
-		// at drawing time. 
+		// at drawing time.
 		m_HasInlineOptionsChanged = true;
 	};
 
@@ -191,7 +191,7 @@ bool TextFormatD2D::CreateLayout(ID2D1DeviceContext* target, const std::wstring&
 }
 
 void TextFormatD2D::SetProperties(
-	const WCHAR* fontFamily, int size, bool bold, bool italic,
+	const WCHAR* fontFamily, FLOAT size, bool bold, bool italic,
 	const FontCollection* fontCollection)
 {
 	auto fontCollectionD2D = (FontCollectionD2D*)fontCollection;
@@ -350,7 +350,7 @@ DWRITE_TEXT_METRICS TextFormatD2D::GetMetrics(const std::wstring& srcStr, bool g
 		}
 	}
 
-	DWRITE_TEXT_METRICS metrics = {0};
+	DWRITE_TEXT_METRICS metrics = { 0 };
 	Microsoft::WRL::ComPtr<IDWriteTextLayout> textLayout;
 	HRESULT hr = Canvas::c_DWFactory->CreateTextLayout(
 		str,
@@ -461,7 +461,7 @@ void TextFormatD2D::SetHorizontalAlignment(HorizontalAlignment alignment)
 void TextFormatD2D::SetVerticalAlignment(VerticalAlignment alignment)
 {
 	__super::SetVerticalAlignment(alignment);
-	
+
 	if (m_TextFormat)
 	{
 		m_TextFormat->SetParagraphAlignment(
@@ -706,7 +706,7 @@ bool TextFormatD2D::CreateInlineOption(const size_t index, const std::wstring pa
 	{
 		if (optSize > 1)
 		{
-			FLOAT size = (FLOAT)ConfigParser::ParseInt(options[1].c_str(), 0);
+			FLOAT size = (FLOAT)ConfigParser::ParseDouble(options[1].c_str(), 10.0);
 			UpdateInlineSize(index, pattern, size);
 			return true;
 		}
@@ -1188,17 +1188,19 @@ void TextFormatD2D::ApplyInlineCase(std::wstring& str)
 }
 
 void TextFormatD2D::ApplyInlineShadow(ID2D1DeviceContext* target, ID2D1SolidColorBrush* solidBrush,
-	const UINT32 strLen, const D2D1_POINT_2F& drawPosition)
+	const UINT32 strLen, const D2D1_RECT_F& drawRect)
 {
 	for (const auto& fmt : m_TextInlineFormat)
 	{
 		if (fmt->GetType() == Gfx::InlineType::Shadow)
 		{
 			auto option = dynamic_cast<TextInlineFormat_Shadow*>(fmt.get());
-			option->ApplyInlineFormat(target, m_TextLayout.Get(), solidBrush, strLen, drawPosition);
+			option->ApplyInlineFormat(target, m_TextLayout.Get(), solidBrush, strLen, drawRect);
 
 			// We need to reset the color options after the shadow effect because the shadow effect
 			// can turn some characters invisible.
+			D2D1_POINT_2F drawPosition = D2D1::Point2F(drawRect.left, drawRect.top);
+
 			ResetInlineColoring(solidBrush, strLen);
 			ResetGradientPosition(&drawPosition);
 			ApplyInlineColoring(target, &drawPosition);

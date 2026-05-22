@@ -25,65 +25,45 @@ D2D1_POINT_2F AddPoint2F(const D2D1_POINT_2F& point1, const D2D1_POINT_2F& point
 
 D2D1_POINT_2F FindEdgePoint(const float theta, const float left, const float top, const float right, const float bottom)
 {
-	float theta1 = theta * (M_PI / 180.0f);
+	float base_angle = theta;  // In degrees
 
-	while (theta1 < -M_PI) theta1 += (2 * M_PI);
-	while (theta1 > M_PI) theta1 -= (2 * M_PI);
+	// Restrict |base_angle| to [0..360] degrees
+	while (base_angle < 0.0f) base_angle += 360.0f;
+	base_angle = fmodf(base_angle, 360.0f);
 
-	float width = right - left;
-	float height = bottom - top;
+	// Convert |base_angle| from degrees to radians
+	const float base_radians = base_angle * (M_PI / 180.0f);
 
-	const float recttan = atan2f(height, width);
-	const float thetatan = tanf(theta1);
+	// Get the shape area diagonal
+	const float width = right - left;
+	const float height = bottom - top;
+	const float rectangle_tangent = atan2f(height, width);
 
-	enum Region
-	{
-		One,        // 315 - 45
-		Two,        // 45  - 135
-		Three,      // 135 - 225
-		Four        // 225 - 315
-	} region;
+	// Find the quadrant the |base_angle| is in
+	const int quadrant = (int)fmodf(base_angle / 90.0f, 4.0f) + 1;
 
-	if (theta1 > -recttan && theta1 <= recttan)
+	// Get the gradient axis angle based on quadrant the |base_radians| is in
+	const float axis_angle = [&]() -> float
 	{
-		region = One;
-	}
-	else if (theta1 > recttan && theta1 <= (M_PI - recttan))
-	{
-		region = Two;
-	}
-	else if (theta1 > (M_PI - recttan) || theta1 <= -(M_PI - recttan))
-	{
-		region = Three;
-	}
-	else
-	{
-		region = Four;
-	}
+		switch (quadrant)
+		{
+		default:
+		case 1: return base_radians - M_PI * 0.0f;
+		case 2: return M_PI * 1.0f - base_radians;
+		case 3: return base_radians - M_PI * 1.0f;
+		case 4: return M_PI * 2.0f - base_radians;
+		}
+	}();
 
-	float xfactor = 1.0f;
-	float yfactor = -1.0f;
-	switch (region)
-	{
-	case One: yfactor = -yfactor; break;
-	case Two: yfactor = -yfactor; break;
-	case Three: xfactor = -xfactor; break;
-	case Four: xfactor = -xfactor; break;
-	}
+	// Calculate the point by:
+	// x = center of shape width  + half of shape area * cos(axis_angle - rectangle_tangent) * cos(base_angle)
+	// y = center of shape height + half of shape area * cos(axis angle - rectangle_tangent) * sin(base_angle)
+	const float half_area = sqrtf(powf(width, 2.0f) + powf(height, 2.0f)) / 2.0f;
+	const float cos_axis = cosf(fabsf(axis_angle - rectangle_tangent));
 
-	D2D1_POINT_2F point = { left + (width / 2.0f), top + (height / 2.0f) };
-	if (region == One || region == Three)
-	{
-		point.x += xfactor * (width / 2.0f);
-		point.y += yfactor * (width / 2.0f) * thetatan;
-	}
-	else
-	{
-		point.x += xfactor * (height / (2.0f * thetatan));
-		point.y += yfactor * (height / 2.0f);
-	}
-
-	return point;
+	return D2D1::Point2F(
+		left + (width / 2.0f) + (half_area * cos_axis * cosf(base_radians)),
+		top + (height / 2.0f) + (half_area * cos_axis * sinf(base_radians)));
 }
 
 bool RectContains(const D2D1_RECT_F& rect, const D2D1_POINT_2F& point)

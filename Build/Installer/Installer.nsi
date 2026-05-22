@@ -368,6 +368,10 @@ Function PageWelcome
 		${NSD_Check} $R1
 	${EndIf}
 
+	; Remove UAC shield on button in case user clicked "Back" on next dialog
+	GetDlgItem $0 $HWNDPARENT 1
+	SendMessage $0 ${BCM_SETSHIELD} 0 0
+
 	Call muiPageLoadFullWindow
 
 	nsDialogs::Show
@@ -450,6 +454,10 @@ Function PageOptions
 	${If} $InstallPortable = 1
 		${GetRoot} "$WINDIR" $0
 		${NSD_SetText} $R0 "$0\Rainmeter"
+
+		${If} ${RunningX64}
+			${NSD_Check} $R2
+		${EndIf}
 	${Else}
 		; Disable Directory editbox and Browse button if already installed
 		SendMessage $R0 ${EM_SETREADONLY} 1 0
@@ -479,10 +487,6 @@ Function PageOptions
 		SendMessage $0 ${BCM_SETSHIELD} 0 0
 	${Else}
 		SendMessage $0 ${BCM_SETSHIELD} 0 1
-
-		; Hide Back button
-		GetDlgItem $0 $HWNDPARENT 3
-		ShowWindow $0 ${SW_HIDE}
 	${EndIf}
 
 	nsDialogs::Show
@@ -734,7 +738,7 @@ SkipIniMove:
 
 		; Get the current date (runtime) [YMD]
 		${GetTime} "" "L" $0 $1 $2 $3 $4 $5 $6
-		WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Rainmeter" "InstallDate" "$2$1$3"
+		WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Rainmeter" "InstallDate" "$2$1$0"
 
 		; Get rid of approximate install size, which we wrote out in the past.
 		DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Rainmeter" "EstimatedSize"

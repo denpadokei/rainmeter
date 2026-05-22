@@ -30,10 +30,12 @@ public:
 	static void UpdateSelectedSkinOptions(Skin* skin);
 
 	static void UpdateSkins(Skin* skin, bool deleted = false);
+	static void UpdateSkinDraggableCheckBox();
 	static void UpdateLayouts();
 	static void UpdateGameMode();
 
 	static void UpdateLanguageStatus();
+	static void UpdateGlobalDraggableCheckBox();
 
 	static void UpdateSettings();
 
@@ -90,6 +92,7 @@ private:
 
 		void UpdateSelected(Skin* skin);
 		void Update(Skin* skin, bool deleted);
+		void UpdateDraggableCheckBox();
 
 		static void SelectTreeItem(HWND tree, HTREEITEM item, LPCWSTR name);
 
@@ -210,6 +213,7 @@ private:
 		virtual void Initialize();
 
 		void UpdateLanguageStatus();
+		void UpdateDraggableCheckBox();
 		void Update();
 
 	protected:

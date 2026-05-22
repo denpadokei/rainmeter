@@ -41,6 +41,7 @@ const UINT WM_TASKBARCREATED = ::RegisterWindowMessage(L"TaskbarCreated");
 using namespace Gdiplus;
 
 TrayIcon::TrayIcon() :
+	m_Window(nullptr),
 	m_Icon(),
 	m_Measure(),
 	m_MeterType(TRAY_METER_TYPE_HISTOGRAM),
@@ -62,7 +63,9 @@ TrayIcon::~TrayIcon()
 	RemoveTrayIcon();
 
 	delete m_Bitmap;
+	m_Bitmap = nullptr;
 	delete m_Measure;
+	m_Measure = nullptr;
 
 	for (size_t i = 0, isize = m_Icons.size(); i < isize; ++i)
 	{
@@ -70,12 +73,16 @@ TrayIcon::~TrayIcon()
 	}
 	m_Icons.clear();
 
-	if (m_Window) DestroyWindow(m_Window);
+	if (m_Window)
+	{
+		DestroyWindow(m_Window);
+		m_Window = nullptr;
+	}
 }
 
 void TrayIcon::Initialize()
 {
-	WNDCLASS wc = {0};
+	WNDCLASS wc = { 0 };
 	wc.lpfnWndProc = (WNDPROC)WndProc;
 	wc.hInstance = GetRainmeter().GetModuleInstance();
 	wc.lpszClassName = L"RainmeterTrayClass";
@@ -122,7 +129,7 @@ bool TrayIcon::IsTrayIconReady()
 
 	HRESULT hr = Shell_NotifyIconGetRect(&nii, &rect);
 	if (FAILED(hr)) return false;
-	
+
 	return true;
 }
 
@@ -734,7 +741,7 @@ LRESULT CALLBACK TrayIcon::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 		{
 			auto sendCopyData = [&](const std::wstring& data)
 			{
-				COPYDATASTRUCT cds;
+				COPYDATASTRUCT cds = { 0 };
 				cds.dwData = wParam;
 				cds.cbData = (DWORD)((data.length() + 1) * sizeof(WCHAR));
 				cds.lpData = (PVOID)data.c_str();

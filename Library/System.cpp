@@ -55,7 +55,7 @@ void System::Initialize(HINSTANCE instance)
 	// Update the CRT timezone variables.
 	_tzset();
 
-	WNDCLASS wc = {0};
+	WNDCLASS wc = { 0 };
 	wc.lpfnWndProc = (WNDPROC)WndProc;
 	wc.hInstance = instance;
 	wc.lpszClassName = L"RainmeterSystem";
@@ -150,19 +150,19 @@ BOOL CALLBACK MyInfoEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonit
 {
 	MultiMonitorInfo* m = (MultiMonitorInfo*)dwData;
 
-	MONITORINFOEX info;
+	MONITORINFOEX info = {};
 	info.cbSize = sizeof(MONITORINFOEX);
 	GetMonitorInfo(hMonitor, &info);
 
 	if (GetRainmeter().GetDebug())
 	{
 		LogDebug(info.szDevice);
-		LogDebugF(L"  Flags    : %s(0x%08X)", (info.dwFlags & MONITORINFOF_PRIMARY) ? L"PRIMARY " : L"", info.dwFlags);
-		LogDebugF(L"  Handle   : 0x%p", hMonitor);
-		LogDebugF(L"  ScrArea  : L=%i, T=%i, R=%i, B=%i (W=%i, H=%i)",
+		LogDebugF(L"  Flags       : %s(0x%08X)", (info.dwFlags & MONITORINFOF_PRIMARY) ? L"PRIMARY " : L"", info.dwFlags);
+		LogDebugF(L"  Handle      : 0x%p", hMonitor);
+		LogDebugF(L"  ScreenArea  : L=%i, T=%i, R=%i, B=%i (W=%i, H=%i)",
 			lprcMonitor->left, lprcMonitor->top, lprcMonitor->right, lprcMonitor->bottom,
 			lprcMonitor->right - lprcMonitor->left, lprcMonitor->bottom - lprcMonitor->top);
-		LogDebugF(L"  WorkArea : L=%i, T=%i, R=%i, B=%i (W=%i, H=%i)",
+		LogDebugF(L"  WorkArea    : L=%i, T=%i, R=%i, B=%i (W=%i, H=%i)",
 			info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom,
 			info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
 	}
@@ -313,7 +313,7 @@ void System::SetMultiMonitorInfo()
 
 			if ((dd.StateFlags & DISPLAY_DEVICE_MIRRORING_DRIVER) == 0)
 			{
-				MonitorInfo monitor = {0};
+				MonitorInfo monitor = { 0 };
 
 				monitor.handle = nullptr;
 				monitor.deviceName = deviceName;  // E.g. "\\.\DISPLAY1"
@@ -329,7 +329,13 @@ void System::SetMultiMonitorInfo()
 
 						if (logging)
 						{
-							LogDebugF(L"  Name     : %s", monitor.monitorName.c_str());
+							LogDebugF(L"  Name        : %s", monitor.monitorName.c_str());
+
+							if (*dd.DeviceID && *dd.DeviceKey)
+							{
+								LogDebugF(L"  DeviceID    : %s", dd.DeviceID);
+								LogDebugF(L"  DeviceKey   : %s", dd.DeviceKey);
+							}
 						}
 						break;
 					}
@@ -337,15 +343,22 @@ void System::SetMultiMonitorInfo()
 
 				if (logging)
 				{
-					LogDebugF(L"  Adapter  : %s", deviceString.c_str());
-					LogDebugF(L"  Flags    : %s(0x%08X)", msg.c_str(), dd.StateFlags);
+					LogDebugF(L"  Adapter     : %s", deviceString.c_str());
+
+					if (*ddm.DeviceID && *ddm.DeviceKey)
+					{
+						LogDebugF(L"  AdapterID   : %s", ddm.DeviceID);
+						LogDebugF(L"  AdapterKey  : %s", ddm.DeviceKey);
+					}
+
+					LogDebugF(L"  DeviceFlags : %s(0x%08X)", msg.c_str(), dd.StateFlags);
 				}
 
 				if (dd.StateFlags & DISPLAY_DEVICE_ACTIVE)
 				{
 					monitor.active = true;
 
-					DEVMODE dm = {0};
+					DEVMODE dm = { 0 };
 					dm.dmSize = sizeof(DEVMODE);
 
 					if (EnumDisplaySettings(deviceName.c_str(), ENUM_CURRENT_SETTINGS, &dm))
@@ -355,7 +368,86 @@ void System::SetMultiMonitorInfo()
 
 						if (logging)
 						{
-							LogDebugF(L"  Handle   : 0x%p", monitor.handle);
+							msg.clear();
+							auto buildMessage = [&](LPCWSTR key, LPCWSTR value) -> void
+							{
+								if (!msg.empty()) msg += L", ";
+								msg += key;
+								msg += L'=';
+								msg += value;
+							};
+
+							LogDebugF(L"  Handle      : 0x%p", monitor.handle);
+
+							// Pixel Info
+							if (dm.dmLogPixels > 0)          buildMessage(L"LogicalPixels", std::to_wstring(dm.dmLogPixels).c_str());
+							if (dm.dmFields & DM_BITSPERPEL) buildMessage(L"BitsPerPixel", std::to_wstring(dm.dmBitsPerPel).c_str());
+							if (dm.dmFields & DM_PELSWIDTH && dm.dmFields & DM_PELSHEIGHT)
+							{
+								std::wstring visibleResolution = std::to_wstring(dm.dmPelsWidth);
+								visibleResolution += L'x';
+								visibleResolution += std::to_wstring(dm.dmPelsHeight);
+
+								buildMessage(L"VisibleResolution", visibleResolution.c_str());
+							}
+							if (!msg.empty())
+							{
+								LogDebugF(L"  PixelInfo   : %s", msg.c_str());
+								msg.clear();
+							}
+
+								// Display Info
+								if (dm.dmFields & DM_DISPLAYORIENTATION)
+								{
+								switch (dm.dmDisplayOrientation)
+								{
+									default:
+									case DMDO_DEFAULT: buildMessage(L"Orientation", L"0°"); break;
+									case DMDO_90:      buildMessage(L"Orientation", L"90° (clockwise)"); break;
+									case DMDO_180:     buildMessage(L"Orientation", L"180° (clockwise)"); break;
+									case DMDO_270:     buildMessage(L"Orientation", L"270° (clockwise)"); break;
+								}
+							}
+							if (dm.dmFields & DM_DISPLAYFREQUENCY)
+							{
+								buildMessage(L"Frequency", std::to_wstring(dm.dmDisplayFrequency).c_str());
+								msg += L"Hz";
+							}
+							if (!msg.empty())
+							{
+								LogDebugF(L"  DisplayInfo : %s", msg.c_str());
+								msg.clear();
+							}
+
+							// Display Flags
+							if (dm.dmFields & DM_DISPLAYFLAGS)
+							{
+								std::wstring mode = L"Non-Interlaced";
+								if (dm.dmDisplayFlags & DM_INTERLACED)
+								{
+									mode = L"Interlaced";
+								}
+								if (dm.dmFields & DMDISPLAYFLAGS_TEXTMODE) mode += L"|TextMode";
+								if (dm.dmDisplayFlags & 0x00000001)        mode += L"|Grayscale";  //DM_GRAYSCALE, no longer valid?
+
+								buildMessage(L"Mode", mode.c_str());
+							}
+							if (dm.dmFields & DM_DISPLAYFIXEDOUTPUT)
+							{
+								std::wstring output = L"Default";
+								switch (dm.dmDisplayFixedOutput)
+								{
+									default:
+									case DMDFO_DEFAULT: buildMessage(L"FixedOutput", L"Default"); break;
+									case DMDFO_CENTER:  buildMessage(L"FixedOutput", L"Center"); break;
+									case DMDFO_STRETCH: buildMessage(L"FixedOutput", L"Stretch"); break;
+								}
+							}
+							if (!msg.empty())
+							{
+								LogDebugF(L"  DisplayFlags: %s", msg.c_str());
+								msg.clear();
+							}
 						}
 					}
 
@@ -369,10 +461,10 @@ void System::SetMultiMonitorInfo()
 
 						if (logging)
 						{
-							LogDebugF(L"  ScrArea  : L=%i, T=%i, R=%i, B=%i (W=%i, H=%i)",
+							LogDebugF(L"  ScreenArea  : L=%i, T=%i, R=%i, B=%i (W=%i, H=%i)",
 								info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right, info.rcMonitor.bottom,
 								info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top);
-							LogDebugF(L"  WorkArea : L=%i, T=%i, R=%i, B=%i (W=%i, H=%i)",
+							LogDebugF(L"  WorkArea    : L=%i, T=%i, R=%i, B=%i (W=%i, H=%i)",
 								info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom,
 								info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
 						}
@@ -399,8 +491,8 @@ void System::SetMultiMonitorInfo()
 			{
 				if (logging)
 				{
-					LogDebugF(L"  Adapter  : %s", deviceString.c_str());
-					LogDebugF(L"  Flags    : %s(0x%08X)", msg.c_str(), dd.StateFlags);
+					LogDebugF(L"  Adapter     : %s", deviceString.c_str());
+					LogDebugF(L"  Flags       : %s(0x%08X)", msg.c_str(), dd.StateFlags);
 				}
 			}
 			++dwDevice;
@@ -491,6 +583,10 @@ void System::SetMultiMonitorInfo()
 					(*iter).screen.left, (*iter).screen.top, (*iter).screen.right, (*iter).screen.bottom,
 					(*iter).screen.right - (*iter).screen.left, (*iter).screen.bottom - (*iter).screen.top);
 			}
+			else if ((*iter).monitorName.empty())
+			{
+				LogDebugF(L"@%i: %s (inactive)", i, (*iter).deviceName.c_str());
+			}
 			else
 			{
 				LogDebugF(L"@%i: %s (inactive), MonitorName: %s", i, (*iter).deviceName.c_str(), (*iter).monitorName.c_str());
@@ -542,47 +638,79 @@ void System::UpdateWorkareaInfo()
 HWND System::GetDefaultShellWindow()
 {
 	static HWND c_ShellW = nullptr;  // cache
-	HWND ShellW = GetShellWindow();
+	HWND shellW = GetShellWindow();
 
-	if (ShellW)
+	if (shellW)
 	{
-		if (ShellW == c_ShellW)
+		if (shellW == c_ShellW)
 		{
-			return ShellW;
+			return shellW;
 		}
 		else
 		{
 			const int classLen = _countof(L"Progman") + 1;
 			WCHAR className[classLen];
-			if (!(GetClassName(ShellW, className, classLen) > 0 &&
+			if (!(GetClassName(shellW, className, classLen) > 0 &&
 				wcscmp(className, L"Progman") == 0))
 			{
-				ShellW = nullptr;
+				shellW = nullptr;
 			}
 		}
 	}
 
-	c_ShellW = ShellW;
-	return ShellW;
+	c_ShellW = shellW;
+	return shellW;
 }
 
-/*
-** Finds the WorkerW window.
-** If the WorkerW window is not active, returns nullptr.
-**
-*/
-HWND System::GetWorkerW()
+// Windows 11 24H2 reordered the desktop shell window hierarchy.
+//
+// Spy++ output before Windows 11 24H2:
+//
+//   0x00010190 "" WorkerW
+//     ...
+//     0x000100EE "" SHELLDLL_DefView
+//       0x000100F0 "FolderView" SysListView32
+//   0x00100B8A "" WorkerW
+//   0x000100EC "Program Manager" Progman
+//
+// Spy++ output after Windows 11 24H2:
+//
+//   0x000100EC "Program Manager" Progman
+//     0x000100EE "" SHELLDLL_DefView
+//       0x000100F0 "FolderView" SysListView32
+//     0x00100B8A "" WorkerW
+//
+// So if we're on 24H2+, we should be using the shell window (Progman) instead of WorkerW.
+bool ShouldUseShellWindowAsDesktopIconsHost() {
+	// Check for the existence of GetCurrentMonitorTopologyId, which should be present only
+	// on Windows 11 build 10.0.26100.2454.
+	static bool result = GetProcAddress(GetModuleHandle(L"user32"), "GetCurrentMonitorTopologyId") != nullptr;
+	return result;
+}
+
+// We position our windows relative to the parent of SHELLDLL_DefView, which is what
+// contains the desktop icons.
+HWND System::GetDesktopIconsHostWindow()
 {
 	static HWND c_DefView = nullptr;  // cache
-	HWND ShellW = GetDefaultShellWindow();
-	if (!ShellW) return nullptr;  // Default Shell (Explorer) not running
+	HWND shellW = GetDefaultShellWindow();
+	if (!shellW) return nullptr;  // Default Shell (Explorer) not running
+
+	if (ShouldUseShellWindowAsDesktopIconsHost()) {
+		if (FindWindowEx(shellW, nullptr, L"SHELLDLL_DefView", L""))
+		{
+			return shellW;
+		}
+
+		return nullptr;
+	}
 
 	if (c_DefView && IsWindow(c_DefView))
 	{
 		HWND parent = GetAncestor(c_DefView, GA_PARENT);
 		if (parent)
 		{
-			if (parent == ShellW)
+			if (parent == shellW)
 			{
 				return nullptr;
 			}
@@ -599,22 +727,23 @@ HWND System::GetWorkerW()
 		}
 	}
 
-	HWND WorkerW = nullptr, DefView = FindWindowEx(ShellW, nullptr, L"SHELLDLL_DefView", L"");
-	if (DefView == nullptr)
+	HWND workerW = nullptr;
+	HWND defView = FindWindowEx(shellW, nullptr, L"SHELLDLL_DefView", L"");
+	if (defView == nullptr)
 	{
-		while (WorkerW = FindWindowEx(nullptr, WorkerW, L"WorkerW", L""))
+		while (workerW = FindWindowEx(nullptr, workerW, L"WorkerW", L""))
 		{
-			if (IsWindowVisible(WorkerW) &&
-				BelongToSameProcess(ShellW, WorkerW) &&
-				(DefView = FindWindowEx(WorkerW, nullptr, L"SHELLDLL_DefView", L"")))
+			if (IsWindowVisible(workerW) &&
+				BelongToSameProcess(shellW, workerW) &&
+				(defView = FindWindowEx(workerW, nullptr, L"SHELLDLL_DefView", L"")))
 			{
 				break;
 			}
 		}
 	}
 
-	c_DefView = DefView;
-	return WorkerW;
+	c_DefView = defView;
+	return workerW;
 }
 
 /*
@@ -631,7 +760,7 @@ HWND System::GetBackmostTopWindow()
 	{
 		Skin* wnd = GetRainmeter().GetSkin(winPos);
 		if (!wnd ||
-			(wnd->GetWindowZPosition() != ZPOSITION_NORMAL && 
+			(wnd->GetWindowZPosition() != ZPOSITION_NORMAL &&
 			wnd->GetWindowZPosition() != ZPOSITION_ONDESKTOP &&
 			wnd->GetWindowZPosition() != ZPOSITION_ONBOTTOM))
 		{
@@ -759,19 +888,19 @@ void System::ChangeZPosInOrder()
 ** Moves the helper window to the reference position.
 **
 */
-void System::PrepareHelperWindow(HWND WorkerW)
+void System::PrepareHelperWindow(HWND desktopIconsHostWindow)
 {
 	bool logging = GetRainmeter().GetDebug() && DEBUG_VERBOSE;
 
 	SetWindowPos(c_Window, HWND_BOTTOM, 0, 0, 0, 0, ZPOS_FLAGS);  // always on bottom
 
-	if (c_ShowDesktop && WorkerW)
+	if (c_ShowDesktop && desktopIconsHostWindow)
 	{
 		// Set WS_EX_TOPMOST flag
 		SetWindowPos(c_HelperWindow, HWND_TOPMOST, 0, 0, 0, 0, ZPOS_FLAGS);
 
 		// Find the "backmost" topmost window
-		HWND hwnd = WorkerW;
+		HWND hwnd = desktopIconsHostWindow;
 		while (hwnd = ::GetNextWindow(hwnd, GW_HWNDPREV))
 		{
 			if (GetWindowLongPtr(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST)
@@ -791,8 +920,8 @@ void System::PrepareHelperWindow(HWND WorkerW)
 				{
 					if (logging)
 					{
-						LogDebugF(L"System: HelperWindow: hwnd=0x%p (WorkerW=0x%p), hwndInsertAfter=0x%p (\"%s\" %s) - %s",
-							c_HelperWindow, WorkerW, hwnd, windowText, className, (GetWindowLongPtr(c_HelperWindow, GWL_EXSTYLE) & WS_EX_TOPMOST) ? L"TOPMOST" : L"NORMAL");
+						LogDebugF(L"System: HelperWindow: hwnd=0x%p (desktopIconsHostWindow=0x%p), hwndInsertAfter=0x%p (\"%s\" %s) - %s",
+							c_HelperWindow, desktopIconsHostWindow, hwnd, windowText, className, (GetWindowLongPtr(c_HelperWindow, GWL_EXSTYLE) & WS_EX_TOPMOST) ? L"TOPMOST" : L"NORMAL");
 					}
 					return;
 				}
@@ -800,16 +929,16 @@ void System::PrepareHelperWindow(HWND WorkerW)
 				if (logging)
 				{
 					DWORD err = GetLastError();
-					LogDebugF(L"System: HelperWindow: hwnd=0x%p (WorkerW=0x%p), hwndInsertAfter=0x%p (\"%s\" %s) - FAILED (ErrorCode=0x%08X)",
-						c_HelperWindow, WorkerW, hwnd, windowText, className, err);
+					LogDebugF(L"System: HelperWindow: hwnd=0x%p (desktopIconsHostWindow=0x%p), hwndInsertAfter=0x%p (\"%s\" %s) - FAILED (ErrorCode=0x%08X)",
+						c_HelperWindow, desktopIconsHostWindow, hwnd, windowText, className, err);
 				}
 			}
 		}
 
 		if (logging)
 		{
-			LogDebugF(L"System: HelperWindow: hwnd=0x%p (WorkerW=0x%p), hwndInsertAfter=HWND_TOPMOST - %s",
-				c_HelperWindow, WorkerW, (GetWindowLongPtr(c_HelperWindow, GWL_EXSTYLE) & WS_EX_TOPMOST) ? L"TOPMOST" : L"NORMAL");
+			LogDebugF(L"System: HelperWindow: hwnd=0x%p (desktopIconsHostWindow=0x%p), hwndInsertAfter=HWND_TOPMOST - %s",
+				c_HelperWindow, desktopIconsHostWindow, (GetWindowLongPtr(c_HelperWindow, GWL_EXSTYLE) & WS_EX_TOPMOST) ? L"TOPMOST" : L"NORMAL");
 		}
 	}
 	else
@@ -819,8 +948,8 @@ void System::PrepareHelperWindow(HWND WorkerW)
 
 		if (logging)
 		{
-			LogDebugF(L"System: HelperWindow: hwnd=0x%p (WorkerW=0x%p), hwndInsertAfter=HWND_BOTTOM - %s",
-				c_HelperWindow, WorkerW, (GetWindowLongPtr(c_HelperWindow, GWL_EXSTYLE) & WS_EX_TOPMOST) ? L"TOPMOST" : L"NORMAL");
+			LogDebugF(L"System: HelperWindow: hwnd=0x%p (desktopIconsHostWindow=0x%p), hwndInsertAfter=HWND_BOTTOM - %s",
+				c_HelperWindow, desktopIconsHostWindow, (GetWindowLongPtr(c_HelperWindow, GWL_EXSTYLE) & WS_EX_TOPMOST) ? L"TOPMOST" : L"NORMAL");
 		}
 	}
 }
@@ -829,13 +958,13 @@ void System::PrepareHelperWindow(HWND WorkerW)
 ** Changes the "Show Desktop" state.
 **
 */
-bool System::CheckDesktopState(HWND WorkerW)
+bool System::CheckDesktopState(HWND desktopIconsHostWindow)
 {
 	HWND hwnd = nullptr;
 
-	if (WorkerW && IsWindowVisible(WorkerW))
+	if (desktopIconsHostWindow && IsWindowVisible(desktopIconsHostWindow))
 	{
-		hwnd = FindWindowEx(nullptr, WorkerW, L"RainmeterSystem", L"System");
+		hwnd = FindWindowEx(nullptr, desktopIconsHostWindow, L"RainmeterSystem", L"System");
 	}
 
 	bool stateChanged = (hwnd && !c_ShowDesktop) || (!hwnd && c_ShowDesktop);
@@ -850,7 +979,7 @@ bool System::CheckDesktopState(HWND WorkerW)
 				c_ShowDesktop ? L"desktop" : L"open windows");
 		}
 
-		PrepareHelperWindow(WorkerW);
+		PrepareHelperWindow(desktopIconsHostWindow);
 
 		ChangeZPosInOrder();
 
@@ -877,6 +1006,22 @@ void CALLBACK System::MyWinEventProc(HWINEVENTHOOK hWinEventHook, DWORD event, H
 	{
 		if (!c_ShowDesktop)
 		{
+			if (ShouldUseShellWindowAsDesktopIconsHost())
+			{
+				if (hwnd == GetDefaultShellWindow())
+				{
+					const int max = 5;
+					int loop = 0;
+					while (loop < max && !CheckDesktopState(hwnd))
+					{
+						Sleep(2);  // Wait for 2-16 ms before retrying
+						++loop;
+					}
+				}
+
+				return;
+			}
+
 			const int classLen = _countof(L"WorkerW") + 1;
 			WCHAR className[classLen];
 			if (GetClassName(hwnd, className, classLen) > 0 &&
@@ -933,7 +1078,7 @@ LRESULT CALLBACK System::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 		case TIMER_SHOWDESKTOP:
 			if (wParam == TIMER_SHOWDESKTOP)
 			{
-				CheckDesktopState(GetWorkerW());
+				CheckDesktopState(GetDesktopIconsHostWindow());
 			}
 			break;
 
@@ -1061,7 +1206,7 @@ HMODULE System::RmLoadLibrary(LPCWSTR lpLibFileName, DWORD* dwError)
 */
 void System::ResetWorkingDirectory()
 {
-	WCHAR directory[MAX_PATH] = {0};
+	WCHAR directory[MAX_PATH] = { 0 };
 	GetCurrentDirectory(MAX_PATH, directory);
 
 	const WCHAR* workDir = c_WorkingDirectory.c_str();
@@ -1078,12 +1223,19 @@ void System::ResetWorkingDirectory()
 */
 void System::InitializeCriticalSection(LPCRITICAL_SECTION lpCriticalSection)
 {
-	if (InitializeCriticalSectionEx(lpCriticalSection, 0, CRITICAL_SECTION_NO_DEBUG_INFO))
+	if (InitializeCriticalSectionEx(lpCriticalSection, 0UL, CRITICAL_SECTION_NO_DEBUG_INFO) == TRUE)
 	{
 		return;
 	}
 
-	InitializeCriticalSectionAndSpinCount(lpCriticalSection, 0);
+	// The following should "always succeed" according to:
+	// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-initializecriticalsectionandspincount
+	if (InitializeCriticalSectionAndSpinCount(lpCriticalSection, 0UL) == TRUE)
+	{
+		return;
+	}
+
+	// error?
 }
 
 /*
@@ -1095,19 +1247,22 @@ void System::SetClipboardText(const std::wstring& text)
 	if (OpenClipboard(nullptr))
 	{
 		// Include terminating null char
-		size_t len = text.length() + 1;
+		size_t len = text.length() + 1ULL;
 
 		HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, len * sizeof(WCHAR));
 		if (hMem)
 		{
 			LPVOID data = GlobalLock(hMem);
-			memcpy(data, text.c_str(), len * sizeof(WCHAR));
-			GlobalUnlock(hMem);
-
-			EmptyClipboard();
-			if (!SetClipboardData(CF_UNICODETEXT, hMem))
+			if (data)
 			{
-				GlobalFree(hMem);
+				memcpy(data, text.c_str(), len * sizeof(WCHAR));
+				GlobalUnlock(hMem);
+
+				EmptyClipboard();
+				if (!SetClipboardData(CF_UNICODETEXT, hMem))
+				{
+					GlobalFree(hMem);
+				}
 			}
 		}
 
@@ -1123,7 +1278,7 @@ void System::SetWallpaper(const std::wstring& wallpaper, const std::wstring& sty
 {
 	if (!wallpaper.empty())
 	{
-		if (_waccess(wallpaper.c_str(), 0) == -1)
+		if (_waccess_s(wallpaper.c_str(), 0) != 0)
 		{
 			LogErrorF(L"!SetWallpaper: Unable to read file: %s", wallpaper.c_str());
 			return;
@@ -1264,7 +1419,7 @@ bool System::CopyFilesWithNoCollisions(std::wstring from, const std::wstring& to
 		std::wstring spec = from;
 		spec.append(1, L'*');
 
-		WIN32_FIND_DATA fd;
+		WIN32_FIND_DATA fd = { 0 };
 		HANDLE find = FindFirstFileEx(spec.c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
 		if (find != INVALID_HANDLE_VALUE)
 		{
@@ -1280,7 +1435,7 @@ bool System::CopyFilesWithNoCollisions(std::wstring from, const std::wstring& to
 				toFile.append(from.substr(len));
 				toFile.append(fd.cFileName);
 
-				if (_waccess(toFile.c_str(), 0) == -1)
+				if (_waccess_s(toFile.c_str(), 0) != 0)
 				{
 					System::CopyFiles(fromFile, toFile);
 				}
@@ -1349,14 +1504,14 @@ bool System::RemoveFolder(std::wstring folder)
 */
 void System::UpdateIniFileMappingList()
 {
-	static ULONGLONG s_LastWriteTime = 0;
+	static ULONGLONG s_LastWriteTime = 0ULL;
 
-	HKEY hKey;
+	HKEY hKey = nullptr;
 	LONG ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\IniFileMapping", 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, &hKey);
 	if (ret == ERROR_SUCCESS)
 	{
-		DWORD numSubKeys;
-		ULONGLONG ftLastWriteTime;
+		DWORD numSubKeys = 0UL;
+		ULONGLONG ftLastWriteTime = 0ULL;
 		bool changed = false;
 
 		ret = RegQueryInfoKey(hKey, nullptr, nullptr, nullptr, &numSubKeys, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, (LPFILETIME)&ftLastWriteTime);
@@ -1401,9 +1556,11 @@ void System::UpdateIniFileMappingList()
 			}
 
 			delete [] buffer;
+			buffer = nullptr;
 		}
 
 		RegCloseKey(hKey);
+		hKey = nullptr;
 	}
 }
 
@@ -1456,6 +1613,7 @@ std::wstring System::GetTemporaryFile(const std::wstring& iniFile)
 				}
 
 				delete [] buffer;
+				buffer = nullptr;
 				break;
 			}
 		}

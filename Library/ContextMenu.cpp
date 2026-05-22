@@ -76,7 +76,7 @@ void ContextMenu::ShowMenu(POINT pos, Skin* skin)
 	HMENU menu = !GetGameMode().IsEnabled() ?
 		MenuTemplate::CreateMenu(s_Menu, _countof(s_Menu), GetString) :
 		MenuTemplate::CreateMenu(s_GameModeMenu, _countof(s_GameModeMenu), GetString);
-		
+
 	if (!menu) return;
 
 	m_MenuActive = true;
@@ -116,7 +116,7 @@ void ContextMenu::ShowMenu(POINT pos, Skin* skin)
 
 	SetMenuDefaultItem(menu, IDM_MANAGE, MF_BYCOMMAND);
 
-	if (_waccess(GetLogger().GetLogFilePath().c_str(), 0) == -1)
+	if (_waccess_s(GetLogger().GetLogFilePath().c_str(), 0) != 0)
 	{
 		EnableMenuItem(menu, IDM_SHOWLOGFILE, MF_BYCOMMAND | MF_GRAYED);
 		EnableMenuItem(menu, IDM_DELETELOGFILE, MF_BYCOMMAND | MF_GRAYED);
@@ -206,9 +206,8 @@ void ContextMenu::ShowMenu(POINT pos, Skin* skin)
 		if (newVersion || downloadedNewVersion)
 		{
 			UINT_PTR idm = downloadedNewVersion ? IDM_INSTALL_NEW_VERSION : IDM_NEW_VERSION;
-			WCHAR * str = GetString(downloadedNewVersion ? ID_STR_INSTALL_NEW_VERSION : ID_STR_UPDATEAVAILABLE);
+			WCHAR* str = GetString(downloadedNewVersion ? ID_STR_INSTALL_NEW_VERSION : ID_STR_UPDATEAVAILABLE);
 			InsertMenu(menu, 0, MF_BYPOSITION, idm, str);
-			HiliteMenuItem(rainmeter.GetTrayIcon()->GetWindow(), menu, 0, MF_BYPOSITION | MF_HILITE);
 			++sepPos;
 		}
 
@@ -303,6 +302,7 @@ HMENU ContextMenu::CreateSkinMenu(Skin* skin, int index, HMENU menu)
 				MENU_ITEM(IDM_SKIN_FROMBOTTOM, ID_STR_FROMBOTTOM),
 				MENU_ITEM(IDM_SKIN_XPERCENTAGE, ID_STR_XASPERCENTAGE),
 				MENU_ITEM(IDM_SKIN_YPERCENTAGE, ID_STR_YASPERCENTAGE)),
+			MENU_SEPARATOR(),
 			MENU_SUBMENU(ID_STR_TRANSPARENCY,
 				MENU_ITEM(IDM_SKIN_TRANSPARENCY_0, ID_STR_0PERCENT),
 				MENU_ITEM(IDM_SKIN_TRANSPARENCY_10, ID_STR_10PERCENT),
@@ -314,17 +314,18 @@ HMENU ContextMenu::CreateSkinMenu(Skin* skin, int index, HMENU menu)
 				MENU_ITEM(IDM_SKIN_TRANSPARENCY_70, ID_STR_70PERCENT),
 				MENU_ITEM(IDM_SKIN_TRANSPARENCY_80, ID_STR_80PERCENT),
 				MENU_ITEM(IDM_SKIN_TRANSPARENCY_90, ID_STR_90PERCENT),
-				MENU_ITEM(IDM_SKIN_TRANSPARENCY_100, ID_STR_100PERCENT),
-				MENU_SEPARATOR(),
+				MENU_ITEM(IDM_SKIN_TRANSPARENCY_100, ID_STR_100PERCENT)),
+			MENU_SUBMENU(ID_STR_ONHOVER,
+				MENU_ITEM(IDM_SKIN_HIDEONMOUSE_NONE, ID_STR_DONOTHING),
+				MENU_ITEM(IDM_SKIN_HIDEONMOUSE, ID_STR_HIDE),
 				MENU_ITEM(IDM_SKIN_TRANSPARENCY_FADEIN, ID_STR_FADEIN),
 				MENU_ITEM(IDM_SKIN_TRANSPARENCY_FADEOUT, ID_STR_FADEOUT)),
 			MENU_SEPARATOR(),
-			MENU_ITEM(IDM_SKIN_HIDEONMOUSE, ID_STR_HIDEONMOUSEOVER),
+			MENU_ITEM(IDM_SKIN_CLICKTHROUGH, ID_STR_CLICKTHROUGH),
 			MENU_ITEM(IDM_SKIN_DRAGGABLE, ID_STR_DRAGGABLE),
+			MENU_ITEM(IDM_SKIN_KEEPONSCREEN, ID_STR_KEEPONSCREEN),
 			MENU_ITEM(IDM_SKIN_REMEMBERPOSITION, ID_STR_SAVEPOSITION),
 			MENU_ITEM(IDM_SKIN_SNAPTOEDGES, ID_STR_SNAPTOEDGES),
-			MENU_ITEM(IDM_SKIN_CLICKTHROUGH, ID_STR_CLICKTHROUGH),
-			MENU_ITEM(IDM_SKIN_KEEPONSCREEN, ID_STR_KEEPONSCREEN),
 			MENU_ITEM(IDM_SKIN_FAVORITE, ID_STR_FAVORITE)),
 		MENU_SEPARATOR(),
 		MENU_ITEM(IDM_SKIN_MANAGESKIN, ID_STR_MANAGESKIN),
@@ -360,7 +361,7 @@ HMENU ContextMenu::CreateSkinMenu(Skin* skin, int index, HMENU menu)
 		}
 
 		// Tick the transparency
-		HMENU alphaMenu = GetSubMenu(settingsMenu, 1);
+		HMENU alphaMenu = GetSubMenu(settingsMenu, 2);
 		if (alphaMenu)
 		{
 			int alpha = skin->GetAlphaValue();
@@ -375,39 +376,19 @@ HMENU ContextMenu::CreateSkinMenu(Skin* skin, int index, HMENU menu)
 				checkPos = max(0, checkPos);
 				CheckMenuRadioItem(alphaMenu, checkPos, checkPos, checkPos, MF_BYPOSITION);
 			}
+		}
 
-			switch (skin->GetWindowHide())
-			{
-			case HIDEMODE_FADEIN:
-				CheckMenuItem(alphaMenu, IDM_SKIN_TRANSPARENCY_FADEIN, MF_BYCOMMAND | MF_CHECKED);
-				EnableMenuItem(alphaMenu, IDM_SKIN_TRANSPARENCY_FADEOUT, MF_BYCOMMAND | MF_GRAYED);
-				break;
-
-			case HIDEMODE_FADEOUT:
-				CheckMenuItem(alphaMenu, IDM_SKIN_TRANSPARENCY_FADEOUT, MF_BYCOMMAND | MF_CHECKED);
-				EnableMenuItem(alphaMenu, IDM_SKIN_TRANSPARENCY_FADEIN, MF_BYCOMMAND | MF_GRAYED);
-				break;
-
-			case HIDEMODE_HIDE:
-				EnableMenuItem(alphaMenu, IDM_SKIN_TRANSPARENCY_FADEIN, MF_BYCOMMAND | MF_GRAYED);
-				EnableMenuItem(alphaMenu, IDM_SKIN_TRANSPARENCY_FADEOUT, MF_BYCOMMAND | MF_GRAYED);
-				break;
-			}
+		// Tick the mouse over options (On hover)
+		HMENU hoverMenu = GetSubMenu(settingsMenu, 3);
+		if (hoverMenu)
+		{
+			int mode = skin->GetWindowHide();
+			mode = min(3, mode);
+			mode = max(0, mode);
+			CheckMenuRadioItem(hoverMenu, mode, mode, mode, MF_BYPOSITION);
 		}
 
 		// Tick the settings
-		switch (skin->GetWindowHide())
-		{
-		case HIDEMODE_HIDE:
-			CheckMenuItem(settingsMenu, IDM_SKIN_HIDEONMOUSE, MF_BYCOMMAND | MF_CHECKED);
-			break;
-
-		case HIDEMODE_FADEIN:
-		case HIDEMODE_FADEOUT:
-			EnableMenuItem(settingsMenu, IDM_SKIN_HIDEONMOUSE, MF_BYCOMMAND | MF_GRAYED);
-			break;
-		}
-
 		if (skin->GetSnapEdges())
 		{
 			CheckMenuItem(settingsMenu, IDM_SKIN_SNAPTOEDGES, MF_BYCOMMAND | MF_CHECKED);
@@ -584,7 +565,7 @@ void ContextMenu::AppendSkinCustomMenu(
 			}
 			else
 			{
-				const UINT_PTR id = (index << 16) | (IDM_SKIN_CUSTOMCONTEXTMENU_FIRST + i);
+				const UINT_PTR id = ((UINT_PTR)index << 16) | (IDM_SKIN_CUSTOMCONTEXTMENU_FIRST + i);
 				InsertMenu(menu, (UINT)(position + 1), MF_BYPOSITION | MF_STRING, id, cTitles[i].c_str());
 			}
 
@@ -610,7 +591,7 @@ void ContextMenu::AppendSkinCustomMenu(
 			}
 			else
 			{
-				const UINT_PTR id = (index << 16) | (IDM_SKIN_CUSTOMCONTEXTMENU_FIRST + i);
+				const UINT_PTR id = ((UINT_PTR)index << 16) | (IDM_SKIN_CUSTOMCONTEXTMENU_FIRST + i);
 				AppendMenu(customMenu, MF_BYPOSITION | MF_STRING, id, cTitles[i].c_str());
 			}
 		}

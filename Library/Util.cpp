@@ -19,9 +19,9 @@ UINT GetUniqueID()
 
 WCHAR* GetString(UINT id)
 {
-	LPWSTR pData;
+	LPWSTR pData = nullptr;
 	int len = LoadString(GetRainmeter().GetResourceInstance(), id, (LPWSTR)&pData, 0);
-	return len ? pData : L"";
+	return len > 0 ? pData : L"";
 }
 
 std::wstring GetFormattedString(UINT id, ...)
@@ -55,7 +55,7 @@ HICON GetIcon(UINT id, bool large)
 		auto loadIconMetric = (decltype(LoadIconMetric)*)GetProcAddress(hComctl, "LoadIconMetric");
 		if (loadIconMetric)
 		{
-			HICON icon;
+			HICON icon = { 0 };
 			HRESULT hr = loadIconMetric(hExe, MAKEINTRESOURCE(id), large ? LIM_LARGE : LIM_SMALL, &icon);
 			if (SUCCEEDED(hr))
 			{
@@ -86,5 +86,17 @@ HICON GetIconBySize(UINT id, int size)
 
 void RmNullCRTInvalidParameterHandler(const wchar_t* expression, const wchar_t* function, const wchar_t* file, unsigned int line, uintptr_t pReserved)
 {
-	// Do nothing.
+
+#ifdef _DEBUG
+	if (function && file)
+	{
+		LogErrorF(L"Invalid parameter detected. Function: \"%s\" File: \"%s:%d\" Expression: \"%s\"", function, file, line, expression);
+		return;
+	}
+#endif
+
+	if (GetRainmeter().GetDebug())
+	{
+		LogError(L"Invalid parameter detected");
+	}
 }

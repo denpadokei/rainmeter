@@ -187,7 +187,7 @@ void MeasureScript::Command(const std::wstring& command)
 	m_LuaScript.RunString(command);
 }
 
-bool MeasureScript::CommandWithReturn(const std::wstring& command, std::wstring& strValue)
+bool MeasureScript::CommandWithReturn(const std::wstring& command, std::wstring& strValue, void* delayedLogEntry)
 {
 	// Scripts need to be initialized so that any variables declared in
 	// the Initialize() function in the lua script file are accessible.
@@ -198,6 +198,8 @@ bool MeasureScript::CommandWithReturn(const std::wstring& command, std::wstring&
 		return true;
 	}
 
+	WCHAR errMsg[MAX_LINE_LENGTH];
+
 	size_t sPos = command.find_first_of(L'(');
 	if (sPos != std::wstring::npos)
 	{
@@ -207,7 +209,26 @@ bool MeasureScript::CommandWithReturn(const std::wstring& command, std::wstring&
 			sPos > ePos ||
 			command.size() < 3)
 		{
-			LogErrorF(this, L"Invalid function call: %s", command.c_str());
+			_snwprintf_s(errMsg, _TRUNCATE, L"Invalid function call: %s", command.c_str());
+			if (delayedLogEntry)
+			{
+				std::wstring source = m_Skin->GetSkinPath();
+				source += L" - [";
+				source += GetOriginalName();
+				source += L']';
+
+				// Since scripts can accept single brackets as input, the nested variable parser
+				// can send incomplete section variable to the script, so store a delayed message
+				// in case the "actual" section variable is invalid. If the "final" variable the
+				// parser finds is a valid variable, this error message will not be logged.
+				// See: |ConfigParser::ParseVariables|
+				auto* log = (Logger::Entry*)delayedLogEntry;
+				*log = { Logger::Level::Error, L"", source.c_str(), errMsg };
+			}
+			else
+			{
+				LogErrorF(this, errMsg);
+			}
 			return false;
 		}
 
@@ -237,31 +258,3 @@ bool MeasureScript::CommandWithReturn(const std::wstring& command, std::wstring&
 
 	return true;
 }
-
-//static void stackDump(lua_State *L)
-//{
-//	LuaHelper::LuaLogger::Debug(" ----------------  Stack Dump ----------------" );
-//	for (int i = lua_gettop(L); i > 0; --i)
-//	{
-//		int t = lua_type(L, i);
-//		switch (t)
-//		{
-//		case LUA_TSTRING:
-//			LuaHelper::LuaLogger::Debug("%d:'%s'", i, lua_tostring(L, i));
-//			break;
-//
-//		case LUA_TBOOLEAN:
-//			LuaHelper::LuaLogger::Debug("%d: %s", i, lua_toboolean(L, i) ? "true" : "false");
-//			break;
-//
-//		case LUA_TNUMBER:
-//			LuaHelper::LuaLogger::Debug("%d: %g", i, lua_tonumber(L, i));
-//			break;
-//
-//		default:
-//			LuaHelper::LuaLogger::Debug("%d: %s", i, lua_typename(L, t));
-//			break;
-//		}
-//	}
-//	LuaHelper::LuaLogger::Debug("--------------- Stack Dump Finished ---------------" );
-//}

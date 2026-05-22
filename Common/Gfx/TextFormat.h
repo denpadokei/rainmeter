@@ -43,7 +43,7 @@ public:
 	// Sets the logical properties of the font to use. If the font is not found in the system font
 	// collection, the given |fontCollection| is also searched. |fontCollection| may be nullptr.
 	virtual void SetProperties(
-		const WCHAR* fontFamily, int size, bool bold, bool italic,
+		const WCHAR* fontFamily, FLOAT size, bool bold, bool italic,
 		const FontCollection* fontCollection) = 0;
 
 	// Sets the font weight of the font used. |weight| should be between 1-999.
@@ -51,7 +51,7 @@ public:
 
 	// Sets the trimming and wrapping of the text. If |trim| is true, subsequent draws using this
 	// TextFormat object will produce clipped text with an ellipsis if the text overflows the
-	// bounding rectangle. 
+	// bounding rectangle.
 	virtual void SetTrimming(bool trim) = 0;
 
 	virtual void SetHorizontalAlignment(HorizontalAlignment alignment);

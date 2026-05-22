@@ -94,7 +94,7 @@ private:
 		void Create(HWND owner);
 		virtual void Initialize();
 		virtual void Resize(int w, int h);
-	
+
 		void UpdateSkinList();
 		void UpdateMeasureList(Skin* skin);
 
@@ -145,6 +145,7 @@ private:
 			Id_VersionLabel,
 			Id_LanguageLabel,
 			Id_TimestampLabel,
+			Id_HashLink,
 			Id_HomeLink,
 			Id_LicenseLink,
 			Id_WinVerLabel,

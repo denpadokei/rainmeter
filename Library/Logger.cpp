@@ -44,7 +44,7 @@ Logger& Logger::GetInstance()
 void Logger::StartLogFile()
 {
 	const WCHAR* filePath = m_LogFilePath.c_str();
-	if (_waccess(filePath, 0) == -1)
+	if (_waccess_s(filePath, 0) != 0)
 	{
 		// Create empty log file.
 		HANDLE file = CreateFile(filePath, GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -72,7 +72,7 @@ void Logger::StopLogFile()
 void Logger::DeleteLogFile()
 {
 	const WCHAR* filePath = m_LogFilePath.c_str();
-	if (_waccess(filePath, 0) != -1)
+	if (_waccess_s(filePath, 0) == 0)
 	{
 		const std::wstring text = GetFormattedString(ID_STR_LOGFILEDELETE, filePath);
 		const int res = GetRainmeter().ShowMessage(nullptr, text.c_str(), MB_YESNO | MB_ICONQUESTION);
@@ -87,8 +87,7 @@ void Logger::DeleteLogFile()
 void Logger::SetLogToFile(bool logToFile)
 {
 	m_LogToFile = logToFile;
-	WritePrivateProfileString(
-		L"Rainmeter", L"Logging", logToFile ? L"1" : L"0", GetRainmeter().GetIniFile().c_str());
+	WritePrivateProfileString(L"Rainmeter", L"Logging", logToFile ? L"1" : L"0", GetRainmeter().GetIniFile().c_str());
 }
 
 void Logger::LogInternal(Level level, std::chrono::system_clock::time_point timestamp, const WCHAR* source, const WCHAR* msg)
@@ -97,7 +96,7 @@ void Logger::LogInternal(Level level, std::chrono::system_clock::time_point time
 	auto seconds = std::chrono::duration_cast<std::chrono::seconds>(milliseconds).count();
 	auto time = localtime(&seconds);
 
-	WCHAR timestampSz[128];
+	WCHAR timestampSz[128] = { 0 };
 	size_t len = _snwprintf_s(
 		timestampSz,
 		_TRUNCATE,
@@ -108,7 +107,7 @@ void Logger::LogInternal(Level level, std::chrono::system_clock::time_point time
 		milliseconds.count() % 1000);
 
 	// Store up to MAX_LOG_ENTIRES entries.
-	Entry entry = {level, std::wstring(timestampSz, len), source, msg};
+	Entry entry = { level, std::wstring(timestampSz, len), source, msg };
 	m_Entries.push_back(entry);
 	if (m_Entries.size() > MAX_LOG_ENTIRES)
 	{
@@ -146,7 +145,7 @@ void Logger::WriteToLogFile(Entry& entry)
 #endif
 
 	const WCHAR* filePath = m_LogFilePath.c_str();
-	if (_waccess(filePath, 0) == -1)
+	if (_waccess_s(filePath, 0) != 0)
 	{
 		// The file has been deleted manually.
 		StopLogFile();
@@ -162,12 +161,21 @@ void Logger::WriteToLogFile(Entry& entry)
 	}
 }
 
+void Logger::Log(Logger::Entry* entry)
+{
+	if (entry)
+	{
+		Log(entry->level, entry->source.c_str(), entry->message.c_str());
+	}
+}
+
 void Logger::Log(Level level, const WCHAR* source, const WCHAR* msg)
 {
 	struct DelayedEntry
 	{
 		Level level;
 		std::chrono::system_clock::time_point timestamp;
+		std::wstring source;
 		std::wstring message;
 	};
 	static std::list<DelayedEntry> s_DelayedEntries;
@@ -182,7 +190,7 @@ void Logger::Log(Level level, const WCHAR* source, const WCHAR* msg)
 		while (!s_DelayedEntries.empty())
 		{
 			DelayedEntry& entry = s_DelayedEntries.front();
-			LogInternal(entry.level, entry.timestamp, source, entry.message.c_str());
+			LogInternal(entry.level, entry.timestamp, entry.source.c_str(), entry.message.c_str());
 
 			s_DelayedEntries.erase(s_DelayedEntries.begin());
 		}
@@ -199,7 +207,7 @@ void Logger::Log(Level level, const WCHAR* source, const WCHAR* msg)
 		// Queue message.
 		EnterCriticalSection(&m_CsLogDelay);
 
-		DelayedEntry entry = {level, timestamp, msg};
+		DelayedEntry entry = { level, timestamp, source, msg };
 		s_DelayedEntries.push_back(entry);
 
 		LeaveCriticalSection(&m_CsLogDelay);
@@ -208,23 +216,40 @@ void Logger::Log(Level level, const WCHAR* source, const WCHAR* msg)
 
 void Logger::LogVF(Level level, const WCHAR* source, const WCHAR* format, va_list args)
 {
-	WCHAR* buffer = new WCHAR[1024];
+	auto getSize = [&]() -> size_t
+	{
+		errno = 0;
+		size_t size = _vscwprintf(format, args);
+		if (errno != 0 || size <= 0ULL)
+		{
+			return 1024ULL;
+		}
+		 return ++size;  // +1 for null termination
+	};
 
-	_invalid_parameter_handler oldHandler = _set_invalid_parameter_handler(RmNullCRTInvalidParameterHandler);
+	_invalid_parameter_handler oldHandler = _set_thread_local_invalid_parameter_handler(RmNullCRTInvalidParameterHandler);
 	_CrtSetReportMode(_CRT_ASSERT, 0);
 
+	const size_t bufSize = getSize();
+	WCHAR* buffer = new WCHAR[bufSize];
+
 	errno = 0;
-	_vsnwprintf_s(buffer, 1024, _TRUNCATE, format, args);
+	_vsnwprintf_s(buffer, bufSize, _TRUNCATE, format, args);
 	if (errno != 0)
 	{
 		level = Level::Error;
-		_snwprintf_s(buffer, 1024, _TRUNCATE, L"Internal error: %s", format);
+		_snwprintf_s(buffer, bufSize, _TRUNCATE, L"Internal error: %s", format);
 	}
 
-	_set_invalid_parameter_handler(oldHandler);
+	_set_thread_local_invalid_parameter_handler(oldHandler);
 
-	Log(level, source, buffer);
-	delete [] buffer;
+	if (buffer)
+	{
+		Log(level, source, buffer);
+
+		delete [] buffer;
+		buffer = nullptr;
+	}
 }
 
 std::wstring GetSectionSourceString(Section* section)
@@ -264,6 +289,22 @@ void Logger::LogSkinVF(Logger::Level level, Skin* skin, const WCHAR* format, va_
 	if (skin)
 	{
 		source = skin->GetSkinPath();
+	}
+	GetLogger().LogVF(level, source.c_str(), format, args);
+}
+
+void Logger::LogSkinSVF(Logger::Level level, Skin* skin, const WCHAR* section, const WCHAR* format, va_list args)
+{
+	std::wstring source;
+	if (skin)
+	{
+		source = skin->GetSkinPath();
+		if (section)
+		{
+			source += L" - [";
+			source += section;
+			source += L']';
+		}
 	}
 	GetLogger().LogVF(level, source.c_str(), format, args);
 }

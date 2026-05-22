@@ -30,6 +30,9 @@
 
 #define RI_MOUSE_HORIZONTAL_WHEEL 0x0800
 
+typedef HPOWERNOTIFY(WINAPI * FPRSRN)(HANDLE, DWORD);
+typedef BOOL(WINAPI * FPUSRN)(HPOWERNOTIFY);
+
 enum BUTTONPROC
 {
 	BUTTONPROC_DOWN,
@@ -70,7 +73,7 @@ enum HIDEMODE
 	HIDEMODE_FADEOUT
 };
 
-enum BEVELTYPE 
+enum BEVELTYPE
 {
 	BEVELTYPE_NONE,
 	BEVELTYPE_UP,
@@ -97,13 +100,13 @@ class TextFormat;
 class Skin : public Group
 {
 public:
-	Skin(const std::wstring& folderPath, const std::wstring& file);
+	Skin(const std::wstring& folderPath, const std::wstring& file, const bool hasSettings);
 	~Skin();
 
 	Skin(const Skin& other) = delete;
 	Skin& operator=(Skin other) = delete;
 
-	void Initialize(bool hasSettings);
+	void Initialize();
 
 	void DoBang(Bang bang, const std::vector<std::wstring>& args);
 	void DoDelayedCommand(const WCHAR* command, UINT delay);
@@ -132,6 +135,8 @@ public:
 	void SetOption(const std::wstring& section, const std::wstring& option, const std::wstring& value, bool group);
 	bool HandleContainer(Meter* container);
 	void ResetRelativeMeters() { m_ResetRelativeMeters = true; }
+
+	void SetZPosVariable(ZPOSITION zPos);
 
 	void SetMouseLeaveEvent(bool cancel);
 	void SetHasMouseScrollAction() { m_HasMouseScrollAction = true; }
@@ -281,7 +286,7 @@ private:
 		OPTION_FADEDURATION     = 0x00000004,
 		OPTION_CLICKTHROUGH     = 0x00000008,
 		OPTION_DRAGGABLE        = 0x00000010,
-		OPTION_HIDEONMOUSEOVER  = 0x00000020,
+		OPTION_ONHOVER          = 0x00000020,
 		OPTION_SAVEPOSITION     = 0x00000040,
 		OPTION_SNAPEDGES        = 0x00000080,
 		OPTION_KEEPONSCREEN     = 0x00000100,
@@ -319,7 +324,7 @@ private:
 	void SetSnapEdges(bool b);
 	void UpdateFadeDuration();
 	void SetWindowHide(HIDEMODE hide);
-	void SetWindowZPosition(ZPOSITION zpos);
+	void SetWindowZPosition(ZPOSITION zPos);
 	bool DoAction(int x, int y, MOUSEACTION action, bool test);
 	bool DoMoveAction(int x, int y, MOUSEACTION action);
 	bool ResizeWindow(bool reset);
@@ -355,6 +360,7 @@ private:
 	SIZE m_BackgroundSize;
 
 	HWND m_Window;
+	HPOWERNOTIFY m_SuspendResumeNotification;
 
 	Mouse m_Mouse;
 	bool m_MouseOver;
@@ -388,7 +394,7 @@ private:
 	bool m_WindowYPercentage;
 	int m_WindowW;
 	int m_WindowH;
-	int m_ScreenX;								// X-postion on the virtual screen 
+	int m_ScreenX;								// X-postion on the virtual screen
 	int m_ScreenY;								// Y-postion on the virtual screen
 	int m_SkinW;								// User defined width of skin
 	int m_SkinH;								// User defined height of skin
@@ -472,6 +478,9 @@ private:
 
 	static int c_InstanceCount;
 	static bool c_IsInSelectionMode;
+
+	static FPRSRN c_RegisterSuspendResumeNotification;
+	static FPUSRN c_UnregisterSuspendResumeNotification;
 };
 
 #endif
